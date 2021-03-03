@@ -74,9 +74,7 @@ static char *ngx_http_auth_digest_set_user_file(ngx_conf_t *cf,
 #define NGX_HTTP_AUTH_DIGEST_BUF_SIZE 4096
 
 // digest challenge generation
-static ngx_int_t ngx_http_auth_digest_send_challenge(ngx_http_request_t *r, 
-                                                     ngx_str_t *realm, 
-                                                     ngx_uint_t is_stale);
+static ngx_int_t ngx_http_auth_digest_send_challenge(ngx_http_request_t *r, ngx_str_t *realm, ngx_uint_t is_stale);
 
 // digest response validators
 static ngx_int_t
@@ -85,6 +83,8 @@ static ngx_int_t
 ngx_http_auth_digest_verify_user(ngx_http_request_t *r, ngx_http_auth_digest_cred_t *fields, ngx_str_t *line);
 static ngx_int_t
 ngx_http_auth_digest_verify_hash(ngx_http_request_t *r, ngx_http_auth_digest_cred_t *fields, u_char *hashed_pw);
+
+static int ngx_http_auth_digest_is_loopback(ngx_str_t *server);
 
 // the shm segment that houses the used-nonces tree and evasion rbtree
 static ngx_uint_t ngx_http_auth_digest_shm_size;
@@ -183,23 +183,21 @@ static ngx_int_t ngx_http_auth_digest_worker_init(ngx_cycle_t *cycle);
 static ngx_command_t ngx_http_auth_digest_commands[] =
     {
         {ngx_string("auth_digest"),
-         NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF |
-             NGX_HTTP_LMT_CONF | NGX_CONF_TAKE1,
+         NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_HTTP_LMT_CONF | NGX_CONF_TAKE1,
          ngx_http_auth_digest_set_realm,
          NGX_HTTP_LOC_CONF_OFFSET,
          offsetof(ngx_http_auth_digest_loc_conf_t, realm),
          NULL},
 
         {ngx_string("auth_digest_user_file"),
-         NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF |
-             NGX_HTTP_LMT_CONF | NGX_CONF_TAKE1,
+         NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_HTTP_LMT_CONF | NGX_CONF_TAKE1,
          ngx_http_auth_digest_set_user_file,
          NGX_HTTP_LOC_CONF_OFFSET,
          offsetof(ngx_http_auth_digest_loc_conf_t, user_file),
          NULL},
 
         {ngx_string("auth_digest_localhost_nocheck"),
-         NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1 | NGX_HTTP_LMT_CONF,
+         NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_HTTP_LMT_CONF | NGX_CONF_TAKE1,
          ngx_conf_set_str_slot,
          NGX_HTTP_LOC_CONF_OFFSET,
          offsetof(ngx_http_auth_digest_loc_conf_t, localhost_nocheck),
@@ -220,8 +218,7 @@ static ngx_command_t ngx_http_auth_digest_commands[] =
          NULL},
 
         {ngx_string("auth_digest_drop_time"),
-         NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF |
-             NGX_CONF_TAKE1,
+         NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
          ngx_conf_set_sec_slot,
          NGX_HTTP_LOC_CONF_OFFSET,
          offsetof(ngx_http_auth_digest_loc_conf_t, drop_time),
@@ -242,8 +239,7 @@ static ngx_command_t ngx_http_auth_digest_commands[] =
          NULL},
 
         {ngx_string("auth_digest_maxtries"),
-         NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF |
-             NGX_CONF_TAKE1,
+         NGX_HTTP_MAIN_CONF | NGX_HTTP_SRV_CONF | NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
          ngx_conf_set_num_slot,
          NGX_HTTP_LOC_CONF_OFFSET,
          offsetof(ngx_http_auth_digest_loc_conf_t, maxtries),
