@@ -130,7 +130,7 @@ user_agents_allow_basic
 :Default: **
 :Context: server, location
 :Description:
-  when enabled allows specified user agents strings that can use basic, useful when migrating older apps to digest. 
+  when enabled allows specified user agents strings (comma sperated, no extraspaces) that can use basic, useful when migrating older apps to digest. 
 
 auth_digest_timeout
 ~~~~~~~~~~~~~~~~~~~
