@@ -116,13 +116,21 @@ auth_digest_user_file
   ``joi:enfield:ef25e85b34208c246cfd09ab76b01db7``
   This file needs to be readable by your nginx user!
 
-auth_digest_allow_localhost
+  auth_digest_allow_localhost
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 :Syntax: ``auth_digest_allow_localhost`` *on | off*
 :Default: *off*
 :Context: server, location
 :Description:
   when enabled allows localhost traffic through unchallenged.
+
+user_agents_allow_basic
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+:Syntax: ``user_agents_allow_basic`` *user agents strings that can use basic*
+:Default: **
+:Context: server, location
+:Description:
+  when enabled allows specified user agents strings that can use basic, useful when migrating older apps to digest. 
 
 auth_digest_timeout
 ~~~~~~~~~~~~~~~~~~~

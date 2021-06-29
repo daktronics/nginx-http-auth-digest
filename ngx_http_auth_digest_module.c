@@ -11,12 +11,20 @@
 #include <ngx_md5.h>
 
 #include "ngx_http_auth_digest_module.h"
+//#include "auth.h"
 
-static void* ngx_http_auth_digest_create_loc_conf(ngx_conf_t* cf) {
-	ngx_http_auth_digest_loc_conf_t* conf;
+#if _WIN32
+#include <Windows.h>
+#include <LMCons.h>
+#endif
+
+static void *ngx_http_auth_digest_create_loc_conf(ngx_conf_t *cf)
+{
+	ngx_http_auth_digest_loc_conf_t *conf;
 
 	conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_auth_digest_loc_conf_t));
-	if (conf == NULL) {
+	if (conf == NULL)
+	{
 		return NULL;
 	}
 
@@ -29,9 +37,10 @@ static void* ngx_http_auth_digest_create_loc_conf(ngx_conf_t* cf) {
 	return conf;
 }
 
-static char* ngx_http_auth_digest_merge_loc_conf(ngx_conf_t* cf, void* parent, void* child) {
-	ngx_http_auth_digest_loc_conf_t* prev = parent;
-	ngx_http_auth_digest_loc_conf_t* conf = child;
+static char *ngx_http_auth_digest_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
+{
+	ngx_http_auth_digest_loc_conf_t *prev = parent;
+	ngx_http_auth_digest_loc_conf_t *conf = child;
 
 	ngx_conf_merge_sec_value(conf->timeout, prev->timeout, 60);
 	ngx_conf_merge_sec_value(conf->expires, prev->expires, 10);
@@ -40,50 +49,55 @@ static char* ngx_http_auth_digest_merge_loc_conf(ngx_conf_t* cf, void* parent, v
 	ngx_conf_merge_sec_value(conf->evasion_time, prev->evasion_time, 300);
 	ngx_conf_merge_value(conf->maxtries, prev->maxtries, 5);
 	ngx_conf_merge_str_value(conf->allow_localhost, prev->allow_localhost, "off");
+	ngx_conf_merge_str_value(conf->user_agents_allow_basic, prev->user_agents_allow_basic, "");
 
-	if (conf->user_file.value.len == 0) {
+	if (conf->user_file.value.len == 0)
+	{
 		conf->user_file = prev->user_file;
 	}
 
-	if (conf->realm.value.len == 0) {
+	if (conf->realm.value.len == 0)
+	{
 		conf->realm = prev->realm;
 	}
 
 	return NGX_CONF_OK;
 }
 
-static ngx_int_t ngx_http_auth_digest_init(ngx_conf_t* cf) {
-	ngx_http_handler_pt* h;
-	ngx_http_core_main_conf_t* cmcf;
-	ngx_str_t* shm_name;
+static ngx_int_t ngx_http_auth_digest_init(ngx_conf_t *cf)
+{
+	ngx_http_handler_pt *h;
+	ngx_http_core_main_conf_t *cmcf;
+	ngx_str_t *shm_name;
 
 	cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
 
 	h = ngx_array_push(&cmcf->phases[NGX_HTTP_ACCESS_PHASE].handlers);
-	if (h == NULL) {
+	if (h == NULL)
+	{
 		return NGX_ERROR;
 	}
 
 	*h = ngx_http_auth_digest_handler;
 
-	ngx_http_auth_digest_cleanup_timer =
-		ngx_pcalloc(cf->pool, sizeof(ngx_event_t));
-	if (ngx_http_auth_digest_cleanup_timer == NULL) {
+	ngx_http_auth_digest_cleanup_timer = ngx_pcalloc(cf->pool, sizeof(ngx_event_t));
+	if (ngx_http_auth_digest_cleanup_timer == NULL)
+	{
 		return NGX_ERROR;
 	}
 
-	shm_name = ngx_palloc(cf->pool, sizeof * shm_name);
+	shm_name = ngx_palloc(cf->pool, sizeof *shm_name);
 	shm_name->len = sizeof("auth_digest");
-	shm_name->data = (unsigned char*)"auth_digest";
+	shm_name->data = (unsigned char *)"auth_digest";
 
-	if (ngx_http_auth_digest_shm_size == 0) {
+	if (ngx_http_auth_digest_shm_size == 0)
+	{
 		ngx_http_auth_digest_shm_size = 4 * 256 * ngx_pagesize; // default to 4mb
 	}
 
-	ngx_http_auth_digest_shm_zone =
-		ngx_shared_memory_add(cf, shm_name, ngx_http_auth_digest_shm_size,
-			&ngx_http_auth_digest_module);
-	if (ngx_http_auth_digest_shm_zone == NULL) {
+	ngx_http_auth_digest_shm_zone = ngx_shared_memory_add(cf, shm_name, ngx_http_auth_digest_shm_size, &ngx_http_auth_digest_module);
+	if (ngx_http_auth_digest_shm_zone == NULL)
+	{
 		return NGX_ERROR;
 	}
 	ngx_http_auth_digest_shm_zone->init = ngx_http_auth_digest_init_shm_zone;
@@ -91,23 +105,26 @@ static ngx_int_t ngx_http_auth_digest_init(ngx_conf_t* cf) {
 	return NGX_OK;
 }
 
-static ngx_int_t ngx_http_auth_digest_worker_init(ngx_cycle_t* cycle) {
-	if (ngx_process != NGX_PROCESS_WORKER) {
+static ngx_int_t ngx_http_auth_digest_worker_init(ngx_cycle_t *cycle)
+{
+	if (ngx_process != NGX_PROCESS_WORKER)
+	{
 		return NGX_OK;
 	}
 
 	// create a cleanup queue big enough for the max number of tree nodes in the
 	// shm
-	ngx_http_auth_digest_cleanup_list = ngx_array_create(cycle->pool, NGX_HTTP_AUTH_DIGEST_CLEANUP_BATCH_SIZE,
-		sizeof(ngx_rbtree_node_t*));
+	ngx_http_auth_digest_cleanup_list = ngx_array_create(cycle->pool, NGX_HTTP_AUTH_DIGEST_CLEANUP_BATCH_SIZE, sizeof(ngx_rbtree_node_t *));
 
-	if (ngx_http_auth_digest_cleanup_list == NULL) {
+	if (ngx_http_auth_digest_cleanup_list == NULL)
+	{
 		ngx_log_error(NGX_LOG_EMERG, cycle->log, 0, "Could not allocate shared memory for auth_digest");
 		return NGX_ERROR;
 	}
 
-	ngx_connection_t* dummy = ngx_pcalloc(cycle->pool, sizeof(ngx_connection_t));
-	if (dummy == NULL) {
+	ngx_connection_t *dummy = ngx_pcalloc(cycle->pool, sizeof(ngx_connection_t));
+	if (dummy == NULL)
+	{
 		return NGX_ERROR;
 	}
 	dummy->fd = (ngx_socket_t)-1;
@@ -116,12 +133,12 @@ static ngx_int_t ngx_http_auth_digest_worker_init(ngx_cycle_t* cycle) {
 	ngx_http_auth_digest_cleanup_timer->log = ngx_cycle->log;
 	ngx_http_auth_digest_cleanup_timer->data = dummy;
 	ngx_http_auth_digest_cleanup_timer->handler = ngx_http_auth_digest_cleanup;
-	ngx_add_timer(ngx_http_auth_digest_cleanup_timer,
-		NGX_HTTP_AUTH_DIGEST_CLEANUP_INTERVAL);
+	ngx_add_timer(ngx_http_auth_digest_cleanup_timer, NGX_HTTP_AUTH_DIGEST_CLEANUP_INTERVAL);
 	return NGX_OK;
 }
 
-static ngx_int_t ngx_http_auth_digest_handler(ngx_http_request_t* r) {
+static ngx_int_t ngx_http_auth_digest_handler(ngx_http_request_t *r)
+{
 	off_t offset;
 	ssize_t n;
 	ngx_fd_t fd;
@@ -130,45 +147,91 @@ static ngx_int_t ngx_http_auth_digest_handler(ngx_http_request_t* r) {
 	ngx_str_t user_file, passwd_line, realm;
 	ngx_file_t file;
 	ngx_uint_t i, begin, tail, idle;
-	ngx_http_auth_digest_loc_conf_t* alcf;
-	ngx_http_auth_digest_cred_t* auth_fields;
+	ngx_http_auth_digest_loc_conf_t *alcf;
+	ngx_http_auth_digest_cred_t *auth_fields;
 	u_char buf[NGX_HTTP_AUTH_DIGEST_BUF_SIZE];
 	u_char line[NGX_HTTP_AUTH_DIGEST_BUF_SIZE];
-	u_char* p;
+	u_char *p;
 
-	if (r->internal) {
+	if (r->internal)
+	{
 		return NGX_DECLINED;
 	}
 
 	// if digest auth is disabled for this location, bail out immediately
 	alcf = ngx_http_get_module_loc_conf(r, ngx_http_auth_digest_module);
 
+	// if localhost bypass, bail out immediately
 	const int isLocalHost = ngx_http_auth_digest_is_loopback(&(r->headers_in.server)) == 0;
 
-	if (isLocalHost) {
+	if (isLocalHost)
+	{
 		const int isLocalHostBypass = ngx_strcmp(alcf->allow_localhost.data, "on") == 0;
-		if (isLocalHostBypass) {
+		if (isLocalHostBypass)
+		{
 			return NGX_DECLINED;
 		}
 	}
 
-	if (alcf->realm.value.len == 0) {
+	if (ngx_http_auth_digest_is_sending_basic(r))
+	{
+		ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "ngx_http_auth_digest_handler-> about to validate preauth basic header");
+		return ngx_http_auth_os_handler(r);
+	}
+
+	if (r->headers_in.user_agent != NULL)
+	{
+		u_char *whitelist = (u_char *)ngx_calloc(alcf->user_agents_allow_basic.len, r->connection->log);
+		ngx_cpystrn(whitelist, alcf->user_agents_allow_basic.data, alcf->user_agents_allow_basic.len + 1);
+
+		char *token = strtok((char *)whitelist, ",");
+		while (token != NULL)
+		{
+			if (ngx_strstr(r->headers_in.user_agent->value.data, token))
+			{
+				ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "ngx_http_auth_digest_handler-> is %*s", r->headers_in.user_agent);
+				ngx_str_t realm;
+				realm.len = 0;
+				realm.data = (u_char *)"";
+
+				if (ngx_http_auth_os_handler(r) == NGX_OK)
+				{
+					ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "ngx_http_auth_digest_handler-> Allowing Display Studio Past");
+					//ngx_free(whitelist);
+					return NGX_OK;
+				}
+				else
+				{
+					ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "ngx_http_auth_digest_handler-> About to challenge Display Studio basic auth");
+					return ngx_http_auth_os_set_realm(r, &realm);
+				}
+			}
+			token = strtok(NULL, ",");
+		}
+	}
+
+	if (alcf->realm.value.len == 0)
+	{
 		return NGX_DECLINED;
 	}
 
-	if (ngx_http_complex_value(r, &alcf->realm, &realm) != NGX_OK) {
+	if (ngx_http_complex_value(r, &alcf->realm, &realm) != NGX_OK)
+	{
 		return NGX_ERROR;
 	}
 
-	if (realm.len == 0 || alcf->user_file.value.len == 0) {
+	if (realm.len == 0 || alcf->user_file.value.len == 0)
+	{
 		return NGX_DECLINED;
 	}
 
-	if (ngx_strcmp(realm.data, "off") == 0) {
+	if (ngx_strcmp(realm.data, "off") == 0)
+	{
 		return NGX_DECLINED;
 	}
 
-	if (ngx_http_auth_digest_evading(r, alcf)) {
+	if (ngx_http_auth_digest_evading(r, alcf))
+	{
 		return NGX_HTTP_UNAUTHORIZED;
 	}
 
@@ -176,34 +239,40 @@ static ngx_int_t ngx_http_auth_digest_handler(ngx_http_request_t* r) {
 	// required fields. otherwise send a challenge
 	auth_fields = ngx_pcalloc(r->pool, sizeof(ngx_http_auth_digest_cred_t));
 	rc = ngx_http_auth_digest_check_credentials(r, auth_fields);
-	if (rc == NGX_DECLINED) {
+
+	if (rc == NGX_DECLINED)
+	{
 		return ngx_http_auth_digest_send_challenge(r, &realm, 0);
 	}
-	else if (rc == NGX_ERROR) {
+	else if (rc == NGX_ERROR)
+	{
 		return NGX_HTTP_INTERNAL_SERVER_ERROR;
 	}
 
 	// check for the existence of a passwd file and attempt to open it
-	if (ngx_http_complex_value(r, &alcf->user_file, &user_file) != NGX_OK) {
+	if (ngx_http_complex_value(r, &alcf->user_file, &user_file) != NGX_OK)
+	{
 		return NGX_ERROR;
 	}
 
 	fd = ngx_open_file(user_file.data, NGX_FILE_RDONLY, NGX_FILE_OPEN, 0);
-	if (fd == NGX_INVALID_FILE) {
+	if (fd == NGX_INVALID_FILE)
+	{
 		ngx_uint_t level;
 		err = ngx_errno;
 
-		if (err == NGX_ENOENT) {
+		if (err == NGX_ENOENT)
+		{
 			level = NGX_LOG_ERR;
 			rc = NGX_HTTP_FORBIDDEN;
 		}
-		else {
+		else
+		{
 			level = NGX_LOG_CRIT;
 			rc = NGX_HTTP_INTERNAL_SERVER_ERROR;
 		}
 
-		ngx_log_error(level, r->connection->log, err,
-			ngx_open_file_n " \"%s\" failed", user_file.data);
+		ngx_log_error(level, r->connection->log, err, ngx_open_file_n " \"%s\" failed", user_file.data);
 		return rc;
 	}
 	ngx_memzero(&file, sizeof(ngx_file_t));
@@ -212,35 +281,43 @@ static ngx_int_t ngx_http_auth_digest_handler(ngx_http_request_t* r) {
 	file.log = r->connection->log;
 
 	// step through the passwd file and find the individual lines, then pass them
-	// off
-	// to be compared against the values in the authorization header
+	// off to be compared against the values in the authorization header
 	passwd_line.data = line;
 	offset = begin = tail = 0;
 	idle = 1;
 	ngx_memzero(buf, NGX_HTTP_AUTH_DIGEST_BUF_SIZE);
 	ngx_memzero(passwd_line.data, NGX_HTTP_AUTH_DIGEST_BUF_SIZE);
-	while (1) {
-		n = ngx_read_file(&file, buf + tail, NGX_HTTP_AUTH_DIGEST_BUF_SIZE - tail,
-			offset);
-		if (n == NGX_ERROR) {
+	while (1)
+	{
+		n = ngx_read_file(&file, buf + tail, NGX_HTTP_AUTH_DIGEST_BUF_SIZE - tail, offset);
+
+		if (n == NGX_ERROR)
+		{
 			ngx_http_auth_digest_close(&file);
 			return NGX_HTTP_INTERNAL_SERVER_ERROR;
 		}
 
 		begin = 0;
-		for (i = 0; i < n + tail; i++) {
-			if (buf[i] == '\n' || buf[i] == '\r') {
-				if (!idle && i - begin > 36) { // 36 is the min length with a single-char name and realm
+		for (i = 0; i < n + tail; i++)
+		{
+			if (buf[i] == '\n' || buf[i] == '\r')
+			{
+				if (!idle && i - begin > 36)
+				{ // 36 is the min length with a single-char name and realm
 					p = ngx_cpymem(passwd_line.data, &buf[begin], i - begin);
 					p[0] = '\0';
 					passwd_line.len = i - begin;
 					rc = ngx_http_auth_digest_verify_user(r, auth_fields, &passwd_line);
 
-					if (rc == NGX_HTTP_AUTH_DIGEST_USERNOTFOUND) {
+					ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "ngx_http_auth_digest_handler->ngx_http_auth_digest_verify_user->rc %d", rc);
+
+					if (rc == NGX_HTTP_AUTH_DIGEST_USERNOTFOUND)
+					{
 						rc = NGX_DECLINED;
 					}
 
-					if (rc != NGX_DECLINED) {
+					if (rc != NGX_DECLINED)
+					{
 						ngx_http_auth_digest_close(&file);
 						ngx_http_auth_digest_evasion_tracking(r, alcf, NGX_HTTP_AUTH_DIGEST_STATUS_SUCCESS);
 						return rc;
@@ -249,36 +326,42 @@ static ngx_int_t ngx_http_auth_digest_handler(ngx_http_request_t* r) {
 				idle = 1;
 				begin = i;
 			}
-			else if (idle) {
+			else if (idle)
+			{
 				idle = 0;
 				begin = i;
 			}
 		}
 
-		if (!idle) {
+		if (!idle)
+		{
 			tail = n + tail - begin;
-			if (n == 0 && tail > 36) {
+			if (n == 0 && tail > 36)
+			{
 
 				p = ngx_cpymem(passwd_line.data, &buf[begin], tail);
 				p[0] = '\0';
 				passwd_line.len = i - begin;
 				rc = ngx_http_auth_digest_verify_user(r, auth_fields, &passwd_line);
-				if (rc == NGX_HTTP_AUTH_DIGEST_USERNOTFOUND) {
+				if (rc == NGX_HTTP_AUTH_DIGEST_USERNOTFOUND)
+				{
 					rc = NGX_DECLINED;
 				}
-				if (rc != NGX_DECLINED) {
+				if (rc != NGX_DECLINED)
+				{
 					ngx_http_auth_digest_close(&file);
-					ngx_http_auth_digest_evasion_tracking(
-						r, alcf, NGX_HTTP_AUTH_DIGEST_STATUS_SUCCESS);
+					ngx_http_auth_digest_evasion_tracking(r, alcf, NGX_HTTP_AUTH_DIGEST_STATUS_SUCCESS);
 					return rc;
 				}
 			}
-			else {
+			else
+			{
 				ngx_memmove(buf, &buf[begin], tail);
 			}
 		}
 
-		if (n == 0) {
+		if (n == 0)
+		{
 			break;
 		}
 
@@ -290,9 +373,9 @@ static ngx_int_t ngx_http_auth_digest_handler(ngx_http_request_t* r) {
 	// log only wrong username/password,
 	// not expired hash
 	int nc = ngx_hextoi(auth_fields->nc.data, auth_fields->nc.len);
-	if (nc == 1) {
-		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "invalid username or password for %*s",
-			auth_fields->username.len, auth_fields->username.data);
+	if (nc == 1)
+	{
+		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "invalid username or password for %*s", auth_fields->username.len, auth_fields->username.data);
 	}
 
 	ngx_http_auth_digest_evasion_tracking(r, alcf, NGX_HTTP_AUTH_DIGEST_STATUS_FAILURE);
@@ -302,10 +385,16 @@ static ngx_int_t ngx_http_auth_digest_handler(ngx_http_request_t* r) {
 	return ngx_http_auth_digest_send_challenge(r, &realm, auth_fields->stale);
 }
 
-ngx_int_t
-ngx_http_auth_digest_check_credentials(ngx_http_request_t* r, ngx_http_auth_digest_cred_t* ctx) {
+static ngx_int_t ngx_http_auth_digest_is_sending_basic(ngx_http_request_t *r)
+{
+	return (r->headers_in.authorization != NULL && ngx_strstr(r->headers_in.authorization->value.data, "Basic"));
+}
 
-	if (r->headers_in.authorization == NULL) {
+ngx_int_t ngx_http_auth_digest_check_credentials(ngx_http_request_t *r, ngx_http_auth_digest_cred_t *ctx)
+{
+
+	if (r->headers_in.authorization == NULL)
+	{
 		return NGX_DECLINED;
 	}
 
@@ -336,7 +425,7 @@ ngx_http_auth_digest_check_credentials(ngx_http_request_t* r, ngx_http_auth_dige
 	};
 
 	uint32_t in_value;
-	u_char ch, * p, * last, * start = 0, * end;
+	u_char ch, *p, *last, *start = 0, *end;
 	ngx_str_t name, value;
 	ngx_int_t comma_count = 0, quoted_pair_count = 0;
 
@@ -369,51 +458,62 @@ ngx_http_auth_digest_check_credentials(ngx_http_request_t* r, ngx_http_auth_dige
 
 	ch = *p++;
 
-	while (p <= last) {
-		switch (state) {
+	while (p <= last)
+	{
+		switch (state)
+		{
 		default:
 		case sw_error:
 			return NGX_DECLINED;
 
 			/* first char */
 		case sw_start:
-			if (ch == CR || ch == LF || ch == ' ' || ch == '\t') {
+			if (ch == CR || ch == LF || ch == ' ' || ch == '\t')
+			{
 				ch = *p++;
 			}
-			else if (token_char[ch >> 5] & (1 << (ch & 0x1f))) {
+			else if (token_char[ch >> 5] & (1 << (ch & 0x1f)))
+			{
 				start = p - 1;
 				state = sw_scheme;
 			}
-			else {
+			else
+			{
 				state = sw_error;
 			}
 			break;
 
 		case sw_scheme:
-			if (token_char[ch >> 5] & (1 << (ch & 0x1f))) {
+			if (token_char[ch >> 5] & (1 << (ch & 0x1f)))
+			{
 				ch = *p++;
 			}
-			else if (ch == ' ') {
+			else if (ch == ' ')
+			{
 				end = p - 1;
 				state = sw_scheme_end;
 
 				ctx->auth_scheme.data = start;
 				ctx->auth_scheme.len = end - start;
 
-				if (ngx_strncasecmp(ctx->auth_scheme.data, (u_char*)"Digest", ctx->auth_scheme.len) != 0) {
+				if (ngx_strncasecmp(ctx->auth_scheme.data, (u_char *)"Digest", ctx->auth_scheme.len) != 0)
+				{
 					state = sw_error;
 				}
 			}
-			else {
+			else
+			{
 				state = sw_error;
 			}
 			break;
 
 		case sw_scheme_end:
-			if (ch == ' ') {
+			if (ch == ' ')
+			{
 				ch = *p++;
 			}
-			else {
+			else
+			{
 				state = sw_param_name_start;
 			}
 			break;
@@ -424,37 +524,45 @@ ngx_http_auth_digest_check_credentials(ngx_http_request_t* r, ngx_http_auth_dige
 
 			/* fall through */
 		case sw_lws:
-			if (comma_count > 0 && (token_char[ch >> 5] & (1 << (ch & 0x1f)))) {
+			if (comma_count > 0 && (token_char[ch >> 5] & (1 << (ch & 0x1f))))
+			{
 				state = sw_param_name_start;
 			}
-			else if (ch == ',') {
+			else if (ch == ',')
+			{
 				comma_count++;
 				ch = *p++;
 			}
-			else if (ch == CR || ch == LF || ch == ' ' || ch == '\t') {
+			else if (ch == CR || ch == LF || ch == ' ' || ch == '\t')
+			{
 				ch = *p++;
 			}
-			else {
+			else
+			{
 				state = sw_error;
 			}
 			break;
 
 		case sw_param_name_start:
-			if (token_char[ch >> 5] & (1 << (ch & 0x1f))) {
+			if (token_char[ch >> 5] & (1 << (ch & 0x1f)))
+			{
 				start = p - 1;
 				state = sw_param_name;
 				ch = *p++;
 			}
-			else {
+			else
+			{
 				state = sw_error;
 			}
 			break;
 
 		case sw_param_name:
-			if (token_char[ch >> 5] & (1 << (ch & 0x1f))) {
+			if (token_char[ch >> 5] & (1 << (ch & 0x1f)))
+			{
 				ch = *p++;
 			}
-			else if (ch == '=') {
+			else if (ch == '=')
+			{
 				end = p - 1;
 				state = sw_param_value_start;
 
@@ -463,35 +571,41 @@ ngx_http_auth_digest_check_credentials(ngx_http_request_t* r, ngx_http_auth_dige
 
 				ch = *p++;
 			}
-			else {
+			else
+			{
 				state = sw_error;
 			}
 			break;
 
 		case sw_param_value_start:
-			if (token_char[ch >> 5] & (1 << (ch & 0x1f))) {
+			if (token_char[ch >> 5] & (1 << (ch & 0x1f)))
+			{
 				start = p - 1;
 				state = sw_param_value;
 				ch = *p++;
 			}
-			else if (ch == '\"') {
+			else if (ch == '\"')
+			{
 				start = p;
 				quoted_pair_count = 0;
 				state = sw_param_quoted_value;
 				ch = *p++;
 			}
-			else {
+			else
+			{
 				state = sw_error;
 			}
 			break;
 
 		case sw_param_value:
 			in_value = token_char[ch >> 5] & (1 << (ch & 0x1f));
-			if (in_value) {
+			if (in_value)
+			{
 				ch = *p++;
 			}
 
-			if (!in_value || p > last) {
+			if (!in_value || p > last)
+			{
 				end = p - 1;
 				value.data = start;
 				value.len = end - start;
@@ -501,31 +615,38 @@ ngx_http_auth_digest_check_credentials(ngx_http_request_t* r, ngx_http_auth_dige
 			break;
 
 		case sw_param_quoted_value:
-			if (ch < 0x20 || ch == 0x7f) {
+			if (ch < 0x20 || ch == 0x7f)
+			{
 				state = sw_error;
 			}
-			else if (ch == '\\' && *p <= 0x7f) {
+			else if (ch == '\\' && *p <= 0x7f)
+			{
 				quoted_pair_count++;
 				/* Skip the next char, even if it's a \ */
 				ch = *(p += 2);
 			}
-			else if (ch == '\"') {
+			else if (ch == '\"')
+			{
 				end = p - 1;
 				ch = *p++;
 				value.data = start;
 				value.len = end - start - quoted_pair_count;
-				if (quoted_pair_count > 0) {
+				if (quoted_pair_count > 0)
+				{
 					value.data = ngx_palloc(r->pool, value.len);
-					u_char* d = value.data;
-					u_char* s = start;
-					for (; s < end; s++) {
+					u_char *d = value.data;
+					u_char *s = start;
+					for (; s < end; s++)
+					{
 						ch = *s;
-						if (ch == '\\') {
+						if (ch == '\\')
+						{
 							/* Make sure to add the next character
 							 * even if it's a \
 							 */
 							s++;
-							if (s < end) {
+							if (s < end)
+							{
 								*d++ = ch;
 							}
 							continue;
@@ -536,41 +657,51 @@ ngx_http_auth_digest_check_credentials(ngx_http_request_t* r, ngx_http_auth_dige
 				state = sw_param_end;
 				goto param_end;
 			}
-			else {
+			else
+			{
 				ch = *p++;
 			}
 			break;
 
 		param_end:
 		case sw_param_end:
-			if (ngx_strncasecmp(name.data, (u_char*)"username", name.len) == 0) {
+			if (ngx_strncasecmp(name.data, (u_char *)"username", name.len) == 0)
+			{
 				ctx->username = value;
 			}
-			else if (ngx_strncasecmp(name.data, (u_char*)"qop", name.len) == 0) {
+			else if (ngx_strncasecmp(name.data, (u_char *)"qop", name.len) == 0)
+			{
 				ctx->qop = value;
 			}
-			else if (ngx_strncasecmp(name.data, (u_char*)"realm", name.len) == 0) {
+			else if (ngx_strncasecmp(name.data, (u_char *)"realm", name.len) == 0)
+			{
 				ctx->realm = value;
 			}
-			else if (ngx_strncasecmp(name.data, (u_char*)"nonce", name.len) == 0) {
+			else if (ngx_strncasecmp(name.data, (u_char *)"nonce", name.len) == 0)
+			{
 				ctx->nonce = value;
 			}
-			else if (ngx_strncasecmp(name.data, (u_char*)"nc", name.len) == 0) {
+			else if (ngx_strncasecmp(name.data, (u_char *)"nc", name.len) == 0)
+			{
 				ctx->nc = value;
 			}
-			else if (ngx_strncasecmp(name.data, (u_char*)"uri", name.len) == 0) {
+			else if (ngx_strncasecmp(name.data, (u_char *)"uri", name.len) == 0)
+			{
 				ctx->uri = value;
 			}
-			else if (ngx_strncasecmp(name.data, (u_char*)"cnonce", name.len) ==
-				0) {
+			else if (ngx_strncasecmp(name.data, (u_char *)"cnonce", name.len) ==
+					 0)
+			{
 				ctx->cnonce = value;
 			}
-			else if (ngx_strncasecmp(name.data, (u_char*)"response", name.len) ==
-				0) {
+			else if (ngx_strncasecmp(name.data, (u_char *)"response", name.len) ==
+					 0)
+			{
 				ctx->response = value;
 			}
-			else if (ngx_strncasecmp(name.data, (u_char*)"opaque", name.len) ==
-				0) {
+			else if (ngx_strncasecmp(name.data, (u_char *)"opaque", name.len) ==
+					 0)
+			{
 				ctx->opaque = value;
 			}
 
@@ -579,26 +710,27 @@ ngx_http_auth_digest_check_credentials(ngx_http_request_t* r, ngx_http_auth_dige
 		}
 	}
 
-	if (state != sw_lws_start && state != sw_lws) {
+	if (state != sw_lws_start && state != sw_lws)
+	{
 		return NGX_DECLINED;
 	}
 
 	// bail out if anything but the opaque field is missing from the request
 	// header
 	if (!(ctx->username.len > 0 && ctx->qop.len > 0 && ctx->realm.len > 0 &&
-		ctx->nonce.len > 0 && ctx->nc.len > 0 && ctx->uri.len > 0 &&
-		ctx->cnonce.len > 0 && ctx->response.len > 0) ||
-		ctx->nonce.len != 16) {
+		  ctx->nonce.len > 0 && ctx->nc.len > 0 && ctx->uri.len > 0 &&
+		  ctx->cnonce.len > 0 && ctx->response.len > 0) ||
+		ctx->nonce.len != 16)
+	{
 		return NGX_DECLINED;
 	}
 
 	return NGX_OK;
 }
 
-static ngx_int_t
-ngx_http_auth_digest_verify_user(ngx_http_request_t* r,
-	ngx_http_auth_digest_cred_t* fields,
-	ngx_str_t* line) {
+static ngx_int_t ngx_http_auth_digest_verify_user(ngx_http_request_t *r, ngx_http_auth_digest_cred_t *fields, ngx_str_t *line)
+{
+
 	ngx_uint_t i, from, nomatch;
 	enum
 	{
@@ -611,24 +743,30 @@ ngx_http_auth_digest_verify_user(ngx_http_request_t* r,
 	from = 0;
 	nomatch = 0;
 
+	ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "ngx_http_auth_digest_verify_user %*s", fields->username.len, fields->username.data);
+
 	// step through a single line (of the passwd file), matching the username and
 	// realm
 	// character-by-character against the request's Authorization header fields
-	u_char* buf = line->data;
-	for (i = 0; i <= line->len; i++) {
+	u_char *buf = line->data;
+	for (i = 0; i <= line->len; i++)
+	{
 		u_char ch = buf[i];
 
-		switch (state) {
+		switch (state)
+		{
 		case sw_login:
 			if (ch == '#')
 				nomatch = 1;
-			if (ch == ':') {
+			if (ch == ':')
+			{
 				if (fields->username.len != i)
 					nomatch = 1;
 				state = sw_realm;
 				from = i + 1;
 			}
-			else if (i > fields->username.len || ch != fields->username.data[i]) {
+			else if (i > fields->username.len || ch != fields->username.data[i])
+			{
 				nomatch = 1;
 			}
 			break;
@@ -636,19 +774,22 @@ ngx_http_auth_digest_verify_user(ngx_http_request_t* r,
 		case sw_realm:
 			if (ch == '#')
 				nomatch = 1;
-			if (ch == ':') {
+			if (ch == ':')
+			{
 				if (fields->realm.len != i - from)
 					nomatch = 1;
 				state = sw_ha1;
 				from = i + 1;
 			}
-			else if (ch != fields->realm.data[i - from]) {
+			else if (ch != fields->realm.data[i - from])
+			{
 				nomatch = 1;
 			}
 			break;
 
 		case sw_ha1:
-			if (ch == '\0' || ch == ':' || ch == '#' || ch == CR || ch == LF) {
+			if (ch == '\0' || ch == ':' || ch == '#' || ch == CR || ch == LF)
+			{
 				if (i - from != 32)
 					nomatch = 1;
 			}
@@ -656,18 +797,18 @@ ngx_http_auth_digest_verify_user(ngx_http_request_t* r,
 		}
 	}
 
-	if (nomatch) {
+	if (nomatch)
+	{
+		ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "ngx_http_auth_digest_verify_user => NGX_HTTP_AUTH_DIGEST_USERNOTFOUND %*s", fields->username.len, fields->username.data);
 		return NGX_HTTP_AUTH_DIGEST_USERNOTFOUND;
 	}
 
 	return ngx_http_auth_digest_verify_hash(r, fields, &buf[from]);
 }
 
-static ngx_int_t
-ngx_http_auth_digest_verify_hash(ngx_http_request_t* r,
-	ngx_http_auth_digest_cred_t* fields,
-	u_char* hashed_pw) {
-	u_char* p;
+static ngx_int_t ngx_http_auth_digest_verify_hash(ngx_http_request_t *r, ngx_http_auth_digest_cred_t *fields, u_char *hashed_pw)
+{
+	u_char *p;
 	ngx_str_t http_method;
 	ngx_str_t HA1, HA2, ha2_key;
 	ngx_str_t digest, digest_key;
@@ -685,13 +826,18 @@ ngx_http_auth_digest_verify_hash(ngx_http_request_t* r,
 	// - If A-URI and R-URI are identical up to the '?' verify is executed
 	// - Otherwise the check is not executed and authorization is declined
 	if (!((r->unparsed_uri.len == fields->uri.len) &&
-		(ngx_strncmp(r->unparsed_uri.data, fields->uri.data, fields->uri.len) == 0))) {
+		  (ngx_strncmp(r->unparsed_uri.data, fields->uri.data, fields->uri.len) == 0)))
+	{
 		if (!((r->unparsed_uri.len > fields->uri.len) &&
-			(ngx_strncmp(r->unparsed_uri.data, fields->uri.data, fields->uri.len) == 0) &&
-			(r->unparsed_uri.data[fields->uri.len] == '?'))) {
+			  (ngx_strncmp(r->unparsed_uri.data, fields->uri.data, fields->uri.len) == 0) &&
+			  (r->unparsed_uri.data[fields->uri.len] == '?')))
+		{
+			ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "ngx_http_auth_digest_verify_hash->.NET check NGX_DECLINED %*s", fields->username.len, fields->username.data);
 			return NGX_DECLINED;
 		}
 	}
+
+	ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "ngx_http_auth_digest_verify_hash %*s", fields->username.len, fields->username.data);
 
 	//  the hashing scheme:
 	//    digest:
@@ -710,13 +856,18 @@ ngx_http_auth_digest_verify_hash(ngx_http_request_t* r,
 	http_method.len = r->method_name.len + 1;
 	http_method.data = ngx_pcalloc(r->pool, http_method.len);
 	if (http_method.data == NULL)
+	{
 		return NGX_HTTP_INTERNAL_SERVER_ERROR;
+	}
+
 	p = ngx_cpymem(http_method.data, r->method_name.data, r->method_name.len);
 
 	ha2_key.len = http_method.len + fields->uri.len + 1;
 	ha2_key.data = ngx_pcalloc(r->pool, ha2_key.len);
 	if (ha2_key.data == NULL)
+	{
 		return NGX_HTTP_INTERNAL_SERVER_ERROR;
+	}
 	p = ngx_cpymem(ha2_key.data, http_method.data, http_method.len - 1);
 	*p++ = ':';
 	p = ngx_cpymem(p, fields->uri.data, fields->uri.len);
@@ -730,11 +881,12 @@ ngx_http_auth_digest_verify_hash(ngx_http_request_t* r,
 
 	// calculate digest: md5(ha1:nonce:nc:cnonce:qop:ha2)
 	digest_key.len = HA1.len - 1 + fields->nonce.len + fields->nc.len +
-		fields->cnonce.len + fields->qop.len + HA2.len - 1 + 5 + 1;
+					 fields->cnonce.len + fields->qop.len + HA2.len - 1 + 5 + 1;
 
 	digest_key.data = ngx_pcalloc(r->pool, digest_key.len);
 
-	if (digest_key.data == NULL) {
+	if (digest_key.data == NULL)
+	{
 		return NGX_HTTP_INTERNAL_SERVER_ERROR;
 	}
 
@@ -753,7 +905,8 @@ ngx_http_auth_digest_verify_hash(ngx_http_request_t* r,
 	digest.len = 33;
 	digest.data = ngx_pcalloc(r->pool, 33);
 
-	if (digest.data == NULL) {
+	if (digest.data == NULL)
+	{
 		return NGX_HTTP_INTERNAL_SERVER_ERROR;
 	}
 
@@ -766,45 +919,55 @@ ngx_http_auth_digest_verify_hash(ngx_http_request_t* r,
 	// auth header
 	// and bail out if they don't match
 	if (fields->response.len != digest.len - 1 ||
-		ngx_memcmp(digest.data, fields->response.data, fields->response.len) != 0) {
+		ngx_memcmp(digest.data, fields->response.data, fields->response.len) != 0)
+	{
 		return NGX_DECLINED;
 	}
 
 	ngx_http_auth_digest_nonce_t nonce;
 	ngx_uint_t key;
-	ngx_http_auth_digest_node_t* found;
-	ngx_slab_pool_t* shpool;
-	ngx_http_auth_digest_loc_conf_t* alcf;
-	ngx_table_elt_t* info_header;
+	ngx_http_auth_digest_node_t *found;
+	ngx_slab_pool_t *shpool;
+	ngx_http_auth_digest_loc_conf_t *alcf;
+	ngx_table_elt_t *info_header;
 	ngx_str_t hkey, hval;
 
-	shpool = (ngx_slab_pool_t*)ngx_http_auth_digest_shm_zone->shm.addr;
+	shpool = (ngx_slab_pool_t *)ngx_http_auth_digest_shm_zone->shm.addr;
 	alcf = ngx_http_get_module_loc_conf(r, ngx_http_auth_digest_module);
 	nonce.rnd = ngx_hextoi(fields->nonce.data, 8);
 	nonce.t = ngx_hextoi(&fields->nonce.data[8], 8);
-	key = ngx_crc32_short((u_char*)&nonce.rnd, sizeof nonce.rnd) ^
-		ngx_crc32_short((u_char*)&nonce.t, sizeof(nonce.t));
+
+	key = ngx_crc32_short((u_char *)&nonce.rnd, sizeof nonce.rnd) ^
+		  ngx_crc32_short((u_char *)&nonce.t, sizeof(nonce.t));
 
 	int nc = ngx_hextoi(fields->nc.data, fields->nc.len);
-	if (nc < 0 || nc >= alcf->replays) {
+	if (nc < 0 || nc >= alcf->replays)
+	{
 		fields->stale = 1;
 		return NGX_DECLINED;
 	}
 
 	// make sure nonce and nc are both valid
 	ngx_shmtx_lock(&shpool->mutex);
-	found = (ngx_http_auth_digest_node_t*)ngx_http_auth_digest_rbtree_find(
-		key, ngx_http_auth_digest_rbtree->root,
-		ngx_http_auth_digest_rbtree->sentinel);
-	if (found != NULL) {
-		if (found->expires <= ngx_time()) {
+	found = (ngx_http_auth_digest_node_t *)ngx_http_auth_digest_rbtree_find(key, ngx_http_auth_digest_rbtree->root, ngx_http_auth_digest_rbtree->sentinel);
+	if (found != NULL)
+	{
+
+		ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "ngx_http_auth_digest_verify_hash nonce and nc are both valid");
+
+		if (found->expires <= ngx_time())
+		{
+			ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "ngx_http_auth_digest_verify_hash, failed (found->expires <= ngx_time())");
 			fields->stale = 1;
 			goto invalid;
 		}
-		if (!ngx_bitvector_test(found->nc, nc)) {
+		if (!ngx_bitvector_test(found->nc, nc))
+		{
+			ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "ngx_http_auth_digest_verify_hash, failed-> (ngx_bitvector_test(found->nc, nc))");
 			goto invalid;
 		}
-		if (ngx_bitvector_test(found->nc, 0)) {
+		if (ngx_bitvector_test(found->nc, 0))
+		{
 			// if this is the first use of this nonce, switch the expiration time from
 			// the timeout
 			// param to now+expires. using the 0th element of the nc vector to flag
@@ -828,8 +991,7 @@ ngx_http_auth_digest_verify_hash(ngx_http_request_t* r,
 		// the
 		// Authentication-Info header
 		ngx_memset(ha2_key.data, 0, ha2_key.len);
-		p = ngx_snprintf(ha2_key.data, 1 + fields->uri.len, ":%s",
-			fields->uri.data);
+		p = ngx_snprintf(ha2_key.data, 1 + fields->uri.len, ":%s", fields->uri.data);
 
 		ngx_memset(HA2.data, 0, HA2.len);
 		ngx_md5_init(&md5);
@@ -859,23 +1021,29 @@ ngx_http_auth_digest_verify_hash(ngx_http_request_t* r,
 		// sizeof() includes the null terminator, and digest.len also counts its
 		// null terminator
 		hval.len = sizeof("qop=\"auth\", rspauth=\"\", cnonce=\"\", nc=") +
-			fields->cnonce.len + fields->nc.len + digest.len - 2;
+				   fields->cnonce.len + fields->nc.len + digest.len - 2;
 		hval.data = ngx_pcalloc(r->pool, hval.len + 1);
 		if (hval.data == NULL)
+		{
+			ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "ngx_http_auth_digest_verify_hash (hval.data == NULL) NGX_HTTP_INTERNAL_SERVER_ERROR");
 			return NGX_HTTP_INTERNAL_SERVER_ERROR;
-		p = ngx_snprintf(hval.data, hval.len,
-			"qop=\"auth\", rspauth=\"%*s\", cnonce=\"%*s\", nc=%*s",
-			digest.len - 1, digest.data, fields->cnonce.len,
-			fields->cnonce.data, fields->nc.len, fields->nc.data);
+		}
+
+		p = ngx_snprintf(hval.data, hval.len, "qop=\"auth\", rspauth=\"%*s\", cnonce=\"%*s\", nc=%*s", digest.len - 1, digest.data, fields->cnonce.len, fields->cnonce.data, fields->nc.len, fields->nc.data);
+
 		info_header = ngx_list_push(&r->headers_out.headers);
 		if (info_header == NULL)
+		{
+			ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "ngx_http_auth_digest_verify_hash (info_header == null) NGX_HTTP_INTERNAL_SERVER_ERROR");
 			return NGX_HTTP_INTERNAL_SERVER_ERROR;
+		}
 		info_header->key = hkey;
 		info_header->value = hval;
 		info_header->hash = 1;
 		return NGX_OK;
 	}
-	else {
+	else
+	{
 	invalid:
 		// nonce is invalid/expired or client reused an nc value. suspicious...
 		ngx_shmtx_unlock(&shpool->mutex);
@@ -883,49 +1051,55 @@ ngx_http_auth_digest_verify_hash(ngx_http_request_t* r,
 	}
 }
 
-static ngx_int_t ngx_http_auth_digest_send_challenge(ngx_http_request_t* r,
-	ngx_str_t* realm,
-	ngx_uint_t is_stale) {
+// send digest challenge, this is what will trigger the browser prompt
+static ngx_int_t ngx_http_auth_digest_send_challenge(ngx_http_request_t *r, ngx_str_t *realm, ngx_uint_t is_stale)
+{
 	ngx_str_t challenge;
-	u_char* p;
-	size_t realm_len = strnlen((const char*)realm->data, realm->len);
+	u_char *p;
+	size_t realm_len = strnlen((const char *)realm->data, realm->len);
 
 	r->headers_out.www_authenticate = ngx_list_push(&r->headers_out.headers);
-	if (r->headers_out.www_authenticate == NULL) {
+	if (r->headers_out.www_authenticate == NULL)
+	{
 		return NGX_HTTP_INTERNAL_SERVER_ERROR;
 	}
 
 	r->headers_out.www_authenticate->hash = 1;
 	ngx_str_set(&r->headers_out.www_authenticate->key, "WWW-Authenticate");
 
-	challenge.len = sizeof("Digest algorithm=\"MD5\", qop=\"auth\", realm=\"\", nonce=\"\"") -
-		1 + realm_len + 16;
-	if (is_stale) {
+	challenge.len = sizeof("Digest algorithm=\"MD5\", qop=\"auth\", realm=\"\", nonce=\"\"") - 1 + realm_len + 16;
+
+	if (is_stale)
+	{
 		challenge.len += sizeof(", stale=\"true\"") - 1;
 	}
+
 	challenge.data = ngx_pnalloc(r->pool, challenge.len);
-	if (challenge.data == NULL) {
+
+	if (challenge.data == NULL)
+	{
 		return NGX_HTTP_INTERNAL_SERVER_ERROR;
 	}
 
 	ngx_http_auth_digest_nonce_t nonce = ngx_http_auth_digest_next_nonce(r);
-	if (nonce.t == 0 && nonce.rnd == 0) {
+	if (nonce.t == 0 && nonce.rnd == 0)
+	{
 		// oom error when allocating nonce session in rbtree
 		return NGX_HTTP_SERVICE_UNAVAILABLE;
 	}
 
-	p = ngx_cpymem(
-		challenge.data, "Digest algorithm=\"MD5\", qop=\"auth\", realm=\"",
-		sizeof("Digest algorithm=\"MD5\", qop=\"auth\", realm=\"") - 1);
+	p = ngx_cpymem(challenge.data, "Digest algorithm=\"MD5\", qop=\"auth\", realm=\"", sizeof("Digest algorithm=\"MD5\", qop=\"auth\", realm=\"") - 1);
 
 	p = ngx_cpymem(p, realm->data, realm_len);
 	p = ngx_cpymem(p, "\", nonce=\"", sizeof("\", nonce=\"") - 1);
 	p = ngx_sprintf(p, "%08xl%08xl", nonce.rnd, nonce.t);
 
-	if (is_stale) {
+	if (is_stale)
+	{
 		p = ngx_cpymem(p, "\", stale=\"true\"", sizeof("\", stale=\"true\""));
 	}
-	else {
+	else
+	{
 		p = ngx_cpymem(p, "\"", sizeof("\""));
 	}
 	r->headers_out.www_authenticate->value = challenge;
@@ -933,22 +1107,23 @@ static ngx_int_t ngx_http_auth_digest_send_challenge(ngx_http_request_t* r,
 	return NGX_HTTP_UNAUTHORIZED;
 }
 
-static void ngx_http_auth_digest_close(ngx_file_t* file) {
-	if (ngx_close_file(file->fd) == NGX_FILE_ERROR) {
-		ngx_log_error(NGX_LOG_ALERT, file->log, ngx_errno,
-			ngx_close_file_n " \"%s\" failed", file->name.data);
+static void ngx_http_auth_digest_close(ngx_file_t *file)
+{
+	if (ngx_close_file(file->fd) == NGX_FILE_ERROR)
+	{
+		ngx_log_error(NGX_LOG_ALERT, file->log, ngx_errno, ngx_close_file_n " \"%s\" failed", file->name.data);
 	}
 }
 
-static char* ngx_http_auth_digest_set_user_file(ngx_conf_t* cf,
-	ngx_command_t* cmd,
-	void* conf) {
-	ngx_http_auth_digest_loc_conf_t* alcf = conf;
+static char *ngx_http_auth_digest_set_user_file(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+	ngx_http_auth_digest_loc_conf_t *alcf = conf;
 
-	ngx_str_t* value;
+	ngx_str_t *value;
 	ngx_http_compile_complex_value_t ccv;
 
-	if (alcf->user_file.value.len) {
+	if (alcf->user_file.value.len)
+	{
 		return "is duplicate";
 	}
 
@@ -962,21 +1137,23 @@ static char* ngx_http_auth_digest_set_user_file(ngx_conf_t* cf,
 	ccv.zero = 1;
 	ccv.conf_prefix = 1;
 
-	if (ngx_http_compile_complex_value(&ccv) != NGX_OK) {
+	if (ngx_http_compile_complex_value(&ccv) != NGX_OK)
+	{
 		return NGX_CONF_ERROR;
 	}
 
 	return NGX_CONF_OK;
 }
 
-static char* ngx_http_auth_digest_set_realm(ngx_conf_t* cf, ngx_command_t* cmd,
-	void* conf) {
-	ngx_http_auth_digest_loc_conf_t* alcf = conf;
+static char *ngx_http_auth_digest_set_realm(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+	ngx_http_auth_digest_loc_conf_t *alcf = conf;
 
-	ngx_str_t* value;
+	ngx_str_t *value;
 	ngx_http_compile_complex_value_t ccv;
 
-	if (alcf->realm.value.len) {
+	if (alcf->realm.value.len)
+	{
 		return "is duplicate";
 	}
 
@@ -991,65 +1168,72 @@ static char* ngx_http_auth_digest_set_realm(ngx_conf_t* cf, ngx_command_t* cmd,
 	ccv.conf_prefix = 0;
 	ccv.root_prefix = 0;
 
-	if (ngx_http_compile_complex_value(&ccv) != NGX_OK) {
+	if (ngx_http_compile_complex_value(&ccv) != NGX_OK)
+	{
 		return NGX_CONF_ERROR;
 	}
 
 	return NGX_CONF_OK;
 }
 
-static char* ngx_http_auth_digest_set_shm_size(ngx_conf_t* cf,
-	ngx_command_t* cmd, void* conf) {
+static char *ngx_http_auth_digest_set_shm_size(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
 	ssize_t new_shm_size;
-	ngx_str_t* value;
+	ngx_str_t *value;
 
 	value = cf->args->elts;
 
 	new_shm_size = ngx_parse_size(&value[1]);
-	if (new_shm_size == NGX_ERROR) {
+	if (new_shm_size == NGX_ERROR)
+	{
 		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "Invalid memory area size `%V'",
-			&value[1]);
+						   &value[1]);
 		return NGX_CONF_ERROR;
 	}
 
 	new_shm_size = ngx_align(new_shm_size, ngx_pagesize);
 
-	if (new_shm_size < 8 * (ssize_t)ngx_pagesize) {
-		ngx_conf_log_error(NGX_LOG_WARN, cf, 0,
-			"The auth_digest_shm_size value must be at least %udKiB",
-			(8 * ngx_pagesize) >> 10);
+	if (new_shm_size < 8 * (ssize_t)ngx_pagesize)
+	{
+		ngx_conf_log_error(NGX_LOG_WARN, cf, 0, "The auth_digest_shm_size value must be at least %udKiB", (8 * ngx_pagesize) >> 10);
 		new_shm_size = 8 * ngx_pagesize;
 	}
 
 	if (ngx_http_auth_digest_shm_size &&
-		ngx_http_auth_digest_shm_size != (ngx_uint_t)new_shm_size) {
+		ngx_http_auth_digest_shm_size != (ngx_uint_t)new_shm_size)
+	{
 		ngx_conf_log_error(NGX_LOG_WARN, cf, 0, "Cannot change memory area size without restart, ignoring change");
 	}
-	else {
+	else
+	{
 		ngx_http_auth_digest_shm_size = new_shm_size;
 	}
 	ngx_conf_log_error(NGX_LOG_DEBUG, cf, 0, "Using %udKiB of shared memory for auth_digest", new_shm_size >> 10);
 	return NGX_CONF_OK;
 }
 
-static ngx_int_t ngx_http_auth_digest_init_shm_zone(ngx_shm_zone_t* shm_zone, void* data) {
-	ngx_slab_pool_t* shpool;
-	ngx_rbtree_t* tree;
-	ngx_rbtree_node_t* sentinel;
-	ngx_atomic_t* lock;
-	if (data) {
+static ngx_int_t ngx_http_auth_digest_init_shm_zone(ngx_shm_zone_t *shm_zone, void *data)
+{
+	ngx_slab_pool_t *shpool;
+	ngx_rbtree_t *tree;
+	ngx_rbtree_node_t *sentinel;
+	ngx_atomic_t *lock;
+	if (data)
+	{
 		shm_zone->data = data;
 		return NGX_OK;
 	}
 
-	shpool = (ngx_slab_pool_t*)shm_zone->shm.addr;
-	tree = ngx_slab_alloc(shpool, sizeof * tree);
-	if (tree == NULL) {
+	shpool = (ngx_slab_pool_t *)shm_zone->shm.addr;
+	tree = ngx_slab_alloc(shpool, sizeof *tree);
+	if (tree == NULL)
+	{
 		return NGX_ERROR;
 	}
 
-	sentinel = ngx_slab_alloc(shpool, sizeof * sentinel);
-	if (sentinel == NULL) {
+	sentinel = ngx_slab_alloc(shpool, sizeof *sentinel);
+	if (sentinel == NULL)
+	{
 		return NGX_ERROR;
 	}
 
@@ -1057,13 +1241,15 @@ static ngx_int_t ngx_http_auth_digest_init_shm_zone(ngx_shm_zone_t* shm_zone, vo
 	shm_zone->data = tree;
 	ngx_http_auth_digest_rbtree = tree;
 
-	tree = ngx_slab_alloc(shpool, sizeof * tree);
-	if (tree == NULL) {
+	tree = ngx_slab_alloc(shpool, sizeof *tree);
+	if (tree == NULL)
+	{
 		return NGX_ERROR;
 	}
 
-	sentinel = ngx_slab_alloc(shpool, sizeof * sentinel);
-	if (sentinel == NULL) {
+	sentinel = ngx_slab_alloc(shpool, sizeof *sentinel);
+	if (sentinel == NULL)
+	{
 		return NGX_ERROR;
 	}
 
@@ -1071,7 +1257,8 @@ static ngx_int_t ngx_http_auth_digest_init_shm_zone(ngx_shm_zone_t* shm_zone, vo
 	ngx_http_auth_digest_ev_rbtree = tree;
 
 	lock = ngx_slab_alloc(shpool, sizeof(ngx_atomic_t));
-	if (lock == NULL) {
+	if (lock == NULL)
+	{
 		return NGX_ERROR;
 	}
 	ngx_http_auth_digest_cleanup_lock = lock;
@@ -1079,65 +1266,69 @@ static ngx_int_t ngx_http_auth_digest_init_shm_zone(ngx_shm_zone_t* shm_zone, vo
 	return NGX_OK;
 }
 
-static int ngx_http_auth_digest_rbtree_cmp(const ngx_rbtree_node_t* v_left,
-	const ngx_rbtree_node_t* v_right) {
+static int ngx_http_auth_digest_rbtree_cmp(const ngx_rbtree_node_t *v_left, const ngx_rbtree_node_t *v_right)
+{
 	if (v_left->key == v_right->key)
 		return 0;
 	else
 		return (v_left->key < v_right->key) ? -1 : 1;
 }
 
-static int
-ngx_http_auth_digest_ev_rbtree_cmp(const ngx_rbtree_node_t* v_left,
-	const ngx_rbtree_node_t* v_right) {
-	if (v_left->key == v_right->key) {
-		ngx_http_auth_digest_ev_node_t* evleft =
-			(ngx_http_auth_digest_ev_node_t*)v_left;
-		ngx_http_auth_digest_ev_node_t* evright =
-			(ngx_http_auth_digest_ev_node_t*)v_right;
-		return ngx_http_auth_digest_srcaddr_cmp(
-			&evleft->src_addr, evleft->src_addrlen, &evright->src_addr,
-			evright->src_addrlen);
+static int ngx_http_auth_digest_ev_rbtree_cmp(const ngx_rbtree_node_t *v_left, const ngx_rbtree_node_t *v_right)
+{
+	if (v_left->key == v_right->key)
+	{
+		ngx_http_auth_digest_ev_node_t *evleft = (ngx_http_auth_digest_ev_node_t *)v_left;
+		ngx_http_auth_digest_ev_node_t *evright = (ngx_http_auth_digest_ev_node_t *)v_right;
+		return ngx_http_auth_digest_srcaddr_cmp(&evleft->src_addr, evleft->src_addrlen, &evright->src_addr, evright->src_addrlen);
 	}
 	return (v_left->key < v_right->key) ? -1 : 1;
 }
 
-static void ngx_rbtree_generic_insert(ngx_rbtree_node_t* temp,
-	ngx_rbtree_node_t* node, ngx_rbtree_node_t* sentinel,
-	int (*compare)(const ngx_rbtree_node_t* left,
-		const ngx_rbtree_node_t* right)) {
-	for (;;) {
-		if (node->key < temp->key) {
+static void ngx_rbtree_generic_insert(ngx_rbtree_node_t *temp, ngx_rbtree_node_t *node, ngx_rbtree_node_t *sentinel, int (*compare)(const ngx_rbtree_node_t *left, const ngx_rbtree_node_t *right))
+{
+	for (;;)
+	{
+		if (node->key < temp->key)
+		{
 
-			if (temp->left == sentinel) {
+			if (temp->left == sentinel)
+			{
 				temp->left = node;
 				break;
 			}
 
 			temp = temp->left;
 		}
-		else if (node->key > temp->key) {
+		else if (node->key > temp->key)
+		{
 
-			if (temp->right == sentinel) {
+			if (temp->right == sentinel)
+			{
 				temp->right = node;
 				break;
 			}
 
 			temp = temp->right;
 		}
-		else { /* node->key == temp->key */
-			if (compare(node, temp) < 0) {
+		else
+		{ /* node->key == temp->key */
+			if (compare(node, temp) < 0)
+			{
 
-				if (temp->left == sentinel) {
+				if (temp->left == sentinel)
+				{
 					temp->left = node;
 					break;
 				}
 
 				temp = temp->left;
 			}
-			else {
+			else
+			{
 
-				if (temp->right == sentinel) {
+				if (temp->right == sentinel)
+				{
 					temp->right = node;
 					break;
 				}
@@ -1153,86 +1344,88 @@ static void ngx_rbtree_generic_insert(ngx_rbtree_node_t* temp,
 	ngx_rbt_red(node);
 }
 
-static void ngx_http_auth_digest_rbtree_insert(ngx_rbtree_node_t* temp,
-	ngx_rbtree_node_t* node,
-	ngx_rbtree_node_t* sentinel) {
+static void ngx_http_auth_digest_rbtree_insert(ngx_rbtree_node_t *temp, ngx_rbtree_node_t *node, ngx_rbtree_node_t *sentinel)
+{
 
 	ngx_rbtree_generic_insert(temp, node, sentinel,
-		ngx_http_auth_digest_rbtree_cmp);
+							  ngx_http_auth_digest_rbtree_cmp);
 }
 
-static void ngx_http_auth_digest_ev_rbtree_insert(ngx_rbtree_node_t* temp,
-	ngx_rbtree_node_t* node,
-	ngx_rbtree_node_t* sentinel) {
+static void ngx_http_auth_digest_ev_rbtree_insert(ngx_rbtree_node_t *temp, ngx_rbtree_node_t *node, ngx_rbtree_node_t *sentinel)
+{
 
 	ngx_rbtree_generic_insert(temp, node, sentinel,
-		ngx_http_auth_digest_ev_rbtree_cmp);
+							  ngx_http_auth_digest_ev_rbtree_cmp);
 }
 
-static ngx_rbtree_node_t*
-ngx_http_auth_digest_rbtree_find(ngx_rbtree_key_t key, ngx_rbtree_node_t* node,
-	ngx_rbtree_node_t* sentinel) {
+static ngx_rbtree_node_t *ngx_http_auth_digest_rbtree_find(ngx_rbtree_key_t key, ngx_rbtree_node_t *node, ngx_rbtree_node_t *sentinel)
+{
 
 	if (node == sentinel)
 		return NULL;
 
-	ngx_rbtree_node_t* found = (node->key == key) ? node : NULL;
-	if (found == NULL && node->left != sentinel) {
+	ngx_rbtree_node_t *found = (node->key == key) ? node : NULL;
+	if (found == NULL && node->left != sentinel)
+	{
 		found = ngx_http_auth_digest_rbtree_find(key, node->left, sentinel);
 	}
-	if (found == NULL && node->right != sentinel) {
+	if (found == NULL && node->right != sentinel)
+	{
 		found = ngx_http_auth_digest_rbtree_find(key, node->right, sentinel);
 	}
 
 	return found;
 }
 
-static ngx_http_auth_digest_ev_node_t*
-ngx_http_auth_digest_ev_rbtree_find(ngx_http_auth_digest_ev_node_t* this,
-	ngx_rbtree_node_t* node,
-	ngx_rbtree_node_t* sentinel) {
+static ngx_http_auth_digest_ev_node_t *ngx_http_auth_digest_ev_rbtree_find(ngx_http_auth_digest_ev_node_t *this, ngx_rbtree_node_t *node, ngx_rbtree_node_t *sentinel)
+{
 	int cmpval;
 	if (node == sentinel)
 		return NULL;
 
-	cmpval = ngx_http_auth_digest_ev_rbtree_cmp((ngx_rbtree_node_t*)this, node);
-	if (cmpval == 0) {
-		return (ngx_http_auth_digest_ev_node_t*)node;
+	cmpval = ngx_http_auth_digest_ev_rbtree_cmp((ngx_rbtree_node_t *)this, node);
+	if (cmpval == 0)
+	{
+		return (ngx_http_auth_digest_ev_node_t *)node;
 	}
 	return ngx_http_auth_digest_ev_rbtree_find(
 		this, (cmpval < 0) ? node->left : node->right, sentinel);
 }
 
-void ngx_http_auth_digest_cleanup(ngx_event_t* ev) {
+void ngx_http_auth_digest_cleanup(ngx_event_t *ev)
+{
 	if (ev->timer_set)
 		ngx_del_timer(ev);
 
-	if (!(ngx_quit || ngx_terminate || ngx_exiting)) {
+	if (!(ngx_quit || ngx_terminate || ngx_exiting))
+	{
 		ngx_add_timer(ev, NGX_HTTP_AUTH_DIGEST_CLEANUP_INTERVAL);
 	}
 
-	if (ngx_trylock(ngx_http_auth_digest_cleanup_lock)) {
+	if (ngx_trylock(ngx_http_auth_digest_cleanup_lock))
+	{
 		ngx_http_auth_digest_rbtree_prune(ev->log);
 		ngx_http_auth_digest_ev_rbtree_prune(ev->log);
 		ngx_unlock(ngx_http_auth_digest_cleanup_lock);
 	}
 }
 
-static void ngx_http_auth_digest_rbtree_prune(ngx_log_t* log) {
+static void ngx_http_auth_digest_rbtree_prune(ngx_log_t *log)
+{
 	ngx_uint_t i;
 	time_t now = ngx_time();
-	ngx_slab_pool_t* shpool =
-		(ngx_slab_pool_t*)ngx_http_auth_digest_shm_zone->shm.addr;
+	ngx_slab_pool_t *shpool = (ngx_slab_pool_t *)ngx_http_auth_digest_shm_zone->shm.addr;
 
 	ngx_shmtx_lock(&shpool->mutex);
 	ngx_http_auth_digest_cleanup_list->nelts = 0;
 	ngx_http_auth_digest_rbtree_prune_walk(ngx_http_auth_digest_rbtree->root,
-		ngx_http_auth_digest_rbtree->sentinel,
-		now, log);
+										   ngx_http_auth_digest_rbtree->sentinel,
+										   now, log);
 
-	ngx_rbtree_node_t** elts =
-		(ngx_rbtree_node_t**)ngx_http_auth_digest_cleanup_list->elts;
-	for (i = 0; i < ngx_http_auth_digest_cleanup_list->nelts; i++) {
+	ngx_rbtree_node_t **elts =
+		(ngx_rbtree_node_t **)ngx_http_auth_digest_cleanup_list->elts;
+	for (i = 0; i < ngx_http_auth_digest_cleanup_list->nelts; i++)
+	{
 		ngx_rbtree_delete(ngx_http_auth_digest_rbtree, elts[i]);
 		ngx_slab_free_locked(shpool, elts[i]);
 	}
@@ -1240,48 +1433,54 @@ static void ngx_http_auth_digest_rbtree_prune(ngx_log_t* log) {
 
 	// if the cleanup array grew during the run, shrink it back down
 	if (ngx_http_auth_digest_cleanup_list->nalloc >
-		NGX_HTTP_AUTH_DIGEST_CLEANUP_BATCH_SIZE) {
-		ngx_array_t* old_list = ngx_http_auth_digest_cleanup_list;
-		ngx_array_t* new_list = ngx_array_create(
+		NGX_HTTP_AUTH_DIGEST_CLEANUP_BATCH_SIZE)
+	{
+		ngx_array_t *old_list = ngx_http_auth_digest_cleanup_list;
+		ngx_array_t *new_list = ngx_array_create(
 			old_list->pool, NGX_HTTP_AUTH_DIGEST_CLEANUP_BATCH_SIZE,
-			sizeof(ngx_rbtree_node_t*));
-		if (new_list != NULL) {
+			sizeof(ngx_rbtree_node_t *));
+		if (new_list != NULL)
+		{
 			ngx_array_destroy(old_list);
 			ngx_http_auth_digest_cleanup_list = new_list;
 		}
-		else {
+		else
+		{
 			ngx_log_error(NGX_LOG_ERR, log, 0, "auth_digest ran out of cleanup space");
 		}
 	}
 }
 
-static void ngx_http_auth_digest_rbtree_prune_walk(ngx_rbtree_node_t* node,
-	ngx_rbtree_node_t* sentinel,
-	time_t now, ngx_log_t* log) {
+static void ngx_http_auth_digest_rbtree_prune_walk(ngx_rbtree_node_t *node, ngx_rbtree_node_t *sentinel, time_t now, ngx_log_t *log)
+{
 	if (node == sentinel)
 		return;
 
-	if (node->left != sentinel) {
+	if (node->left != sentinel)
+	{
 		ngx_http_auth_digest_rbtree_prune_walk(node->left, sentinel, now, log);
 	}
 
-	if (node->right != sentinel) {
+	if (node->right != sentinel)
+	{
 		ngx_http_auth_digest_rbtree_prune_walk(node->right, sentinel, now, log);
 	}
 
-	ngx_http_auth_digest_node_t* dnode = (ngx_http_auth_digest_node_t*)node;
-	if (dnode->drop_time <= ngx_time()) {
-		ngx_rbtree_node_t** dropnode =
+	ngx_http_auth_digest_node_t *dnode = (ngx_http_auth_digest_node_t *)node;
+	if (dnode->drop_time <= ngx_time())
+	{
+		ngx_rbtree_node_t **dropnode =
 			ngx_array_push(ngx_http_auth_digest_cleanup_list);
 		dropnode[0] = node;
 	}
 }
 
-static void ngx_http_auth_digest_ev_rbtree_prune(ngx_log_t* log) {
+static void ngx_http_auth_digest_ev_rbtree_prune(ngx_log_t *log)
+{
 	ngx_uint_t i;
 	time_t now = ngx_time();
-	ngx_slab_pool_t* shpool =
-		(ngx_slab_pool_t*)ngx_http_auth_digest_shm_zone->shm.addr;
+	ngx_slab_pool_t *shpool =
+		(ngx_slab_pool_t *)ngx_http_auth_digest_shm_zone->shm.addr;
 
 	ngx_shmtx_lock(&shpool->mutex);
 	ngx_http_auth_digest_cleanup_list->nelts = 0;
@@ -1289,9 +1488,10 @@ static void ngx_http_auth_digest_ev_rbtree_prune(ngx_log_t* log) {
 		ngx_http_auth_digest_ev_rbtree->root,
 		ngx_http_auth_digest_ev_rbtree->sentinel, now, log);
 
-	ngx_rbtree_node_t** elts =
-		(ngx_rbtree_node_t**)ngx_http_auth_digest_cleanup_list->elts;
-	for (i = 0; i < ngx_http_auth_digest_cleanup_list->nelts; i++) {
+	ngx_rbtree_node_t **elts =
+		(ngx_rbtree_node_t **)ngx_http_auth_digest_cleanup_list->elts;
+	for (i = 0; i < ngx_http_auth_digest_cleanup_list->nelts; i++)
+	{
 		ngx_rbtree_delete(ngx_http_auth_digest_ev_rbtree, elts[i]);
 		ngx_slab_free_locked(shpool, elts[i]);
 	}
@@ -1299,80 +1499,86 @@ static void ngx_http_auth_digest_ev_rbtree_prune(ngx_log_t* log) {
 
 	// if the cleanup array grew during the run, shrink it back down
 	if (ngx_http_auth_digest_cleanup_list->nalloc >
-		NGX_HTTP_AUTH_DIGEST_CLEANUP_BATCH_SIZE) {
-		ngx_array_t* old_list = ngx_http_auth_digest_cleanup_list;
-		ngx_array_t* new_list = ngx_array_create(
-			old_list->pool, NGX_HTTP_AUTH_DIGEST_CLEANUP_BATCH_SIZE,
-			sizeof(ngx_rbtree_node_t*));
-		if (new_list != NULL) {
+		NGX_HTTP_AUTH_DIGEST_CLEANUP_BATCH_SIZE)
+	{
+		ngx_array_t *old_list = ngx_http_auth_digest_cleanup_list;
+		ngx_array_t *new_list = ngx_array_create(old_list->pool, NGX_HTTP_AUTH_DIGEST_CLEANUP_BATCH_SIZE, sizeof(ngx_rbtree_node_t *));
+		if (new_list != NULL)
+		{
 			ngx_array_destroy(old_list);
 			ngx_http_auth_digest_cleanup_list = new_list;
 		}
-		else {
-			ngx_log_error(NGX_LOG_ERR, log, 0,
-				"auth_digest ran out of cleanup space");
+		else
+		{
+			ngx_log_error(NGX_LOG_ERR, log, 0, "auth_digest ran out of cleanup space");
 		}
 	}
 }
 
-static void ngx_http_auth_digest_ev_rbtree_prune_walk(ngx_rbtree_node_t* node,
-	ngx_rbtree_node_t* sentinel,
-	time_t now, ngx_log_t* log) {
+static void ngx_http_auth_digest_ev_rbtree_prune_walk(ngx_rbtree_node_t *node, ngx_rbtree_node_t *sentinel, time_t now, ngx_log_t *log)
+{
 	if (node == sentinel)
 		return;
 
-	if (node->left != sentinel) {
+	if (node->left != sentinel)
+	{
 		ngx_http_auth_digest_ev_rbtree_prune_walk(node->left, sentinel, now, log);
 	}
 
-	if (node->right != sentinel) {
+	if (node->right != sentinel)
+	{
 		ngx_http_auth_digest_ev_rbtree_prune_walk(node->right, sentinel, now, log);
 	}
 
-	ngx_http_auth_digest_ev_node_t* dnode =
-		(ngx_http_auth_digest_ev_node_t*)node;
-	if (dnode->drop_time <= ngx_time()) {
-		ngx_rbtree_node_t** dropnode =
+	ngx_http_auth_digest_ev_node_t *dnode =
+		(ngx_http_auth_digest_ev_node_t *)node;
+	if (dnode->drop_time <= ngx_time())
+	{
+		ngx_rbtree_node_t **dropnode =
 			ngx_array_push(ngx_http_auth_digest_cleanup_list);
 		dropnode[0] = node;
 	}
 }
 
-static ngx_http_auth_digest_nonce_t ngx_http_auth_digest_next_nonce(ngx_http_request_t* r) {
-	ngx_http_auth_digest_loc_conf_t* alcf;
-	ngx_slab_pool_t* shpool;
+static ngx_http_auth_digest_nonce_t ngx_http_auth_digest_next_nonce(ngx_http_request_t *r)
+{
+	ngx_http_auth_digest_loc_conf_t *alcf;
+	ngx_slab_pool_t *shpool;
 	ngx_http_auth_digest_nonce_t nonce;
 	ngx_uint_t key;
-	ngx_http_auth_digest_node_t* node;
+	ngx_http_auth_digest_node_t *node;
 
-	shpool = (ngx_slab_pool_t*)ngx_http_auth_digest_shm_zone->shm.addr;
+	shpool = (ngx_slab_pool_t *)ngx_http_auth_digest_shm_zone->shm.addr;
 	alcf = ngx_http_get_module_loc_conf(r, ngx_http_auth_digest_module);
 
 	// create a nonce value that's not in the active set
-	while (1) {
+	while (1)
+	{
 		nonce.t = ngx_time();
 		nonce.rnd = ngx_random();
-		key = ngx_crc32_short((u_char*)&nonce.rnd, sizeof nonce.rnd) ^
-			ngx_crc32_short((u_char*)&nonce.t, sizeof(nonce.t));
+		key = ngx_crc32_short((u_char *)&nonce.rnd, sizeof nonce.rnd) ^
+			  ngx_crc32_short((u_char *)&nonce.t, sizeof(nonce.t));
 
 		ngx_shmtx_lock(&shpool->mutex);
-		ngx_rbtree_node_t* found =
+		ngx_rbtree_node_t *found =
 			ngx_http_auth_digest_rbtree_find(key, ngx_http_auth_digest_rbtree->root,
-				ngx_http_auth_digest_rbtree->sentinel);
+											 ngx_http_auth_digest_rbtree->sentinel);
 
-		if (found != NULL) {
+		if (found != NULL)
+		{
 			ngx_shmtx_unlock(&shpool->mutex);
 			continue;
 		}
 
 		node = ngx_slab_alloc_locked(shpool,
-			sizeof(ngx_http_auth_digest_node_t) +
-			ngx_bitvector_size(1 + alcf->replays));
-		if (node == NULL) {
+									 sizeof(ngx_http_auth_digest_node_t) +
+										 ngx_bitvector_size(1 + alcf->replays));
+		if (node == NULL)
+		{
 			ngx_shmtx_unlock(&shpool->mutex);
 			ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-				"auth_digest ran out of shm space. Increase the "
-				"auth_digest_shm_size limit.");
+						  "auth_digest ran out of shm space. Increase the "
+						  "auth_digest_shm_size limit.");
 			nonce.t = 0;
 			nonce.rnd = 0;
 			return nonce;
@@ -1380,7 +1586,7 @@ static ngx_http_auth_digest_nonce_t ngx_http_auth_digest_next_nonce(ngx_http_req
 		node->expires = nonce.t + alcf->timeout;
 		node->drop_time = nonce.t + alcf->timeout;
 		ngx_memset(node->nc, 0xff, ngx_bitvector_size(1 + alcf->replays));
-		((ngx_rbtree_node_t*)node)->key = key;
+		((ngx_rbtree_node_t *)node)->key = key;
 		ngx_rbtree_insert(ngx_http_auth_digest_rbtree, &node->node);
 
 		ngx_shmtx_unlock(&shpool->mutex);
@@ -1388,22 +1594,23 @@ static ngx_http_auth_digest_nonce_t ngx_http_auth_digest_next_nonce(ngx_http_req
 	}
 }
 
-static int ngx_http_auth_digest_srcaddr_key(struct sockaddr* sa, socklen_t len,
-	ngx_uint_t* key) {
-	struct sockaddr_in* sin;
+static int ngx_http_auth_digest_srcaddr_key(struct sockaddr *sa, socklen_t len, ngx_uint_t *key)
+{
+	struct sockaddr_in *sin;
 #if (NGX_HAVE_INET6)
-	struct sockaddr_in6* s6;
+	struct sockaddr_in6 *s6;
 #endif
 
-	switch (sa->sa_family) {
+	switch (sa->sa_family)
+	{
 	case AF_INET:
-		sin = (struct sockaddr_in*)sa;
-		*key = ngx_crc32_short((u_char*)&sin->sin_addr, sizeof(sin->sin_addr));
+		sin = (struct sockaddr_in *)sa;
+		*key = ngx_crc32_short((u_char *)&sin->sin_addr, sizeof(sin->sin_addr));
 		return 1;
 #if (NGX_HAVE_INET6)
 	case AF_INET6:
-		s6 = (struct sockaddr_in6*)sa;
-		*key = ngx_crc32_short((u_char*)&s6->sin6_addr, sizeof(s6->sin6_addr));
+		s6 = (struct sockaddr_in6 *)sa;
+		*key = ngx_crc32_short((u_char *)&s6->sin6_addr, sizeof(s6->sin6_addr));
 		return 1;
 #endif
 	default:
@@ -1412,30 +1619,32 @@ static int ngx_http_auth_digest_srcaddr_key(struct sockaddr* sa, socklen_t len,
 	return 0;
 }
 
-static int ngx_http_auth_digest_srcaddr_cmp(struct sockaddr* sa1,
-	socklen_t len1,
-	struct sockaddr* sa2,
-	socklen_t len2) {
-	struct sockaddr_in* sin1, * sin2;
+static int ngx_http_auth_digest_srcaddr_cmp(struct sockaddr *sa1, socklen_t len1, struct sockaddr *sa2, socklen_t len2)
+{
+
+	struct sockaddr_in *sin1, *sin2;
 #if (NGX_HAVE_INET6)
-	struct sockaddr_in6* s61, * s62;
+	struct sockaddr_in6 *s61, *s62;
 #endif
-	if (len1 != len2) {
+	if (len1 != len2)
+	{
 		return (len1 < len2) ? -1 : 1;
 	}
-	if (sa1->sa_family != sa2->sa_family) {
+	if (sa1->sa_family != sa2->sa_family)
+	{
 		return (sa1->sa_family < sa2->sa_family) ? -1 : 1;
 	}
 
-	switch (sa1->sa_family) {
+	switch (sa1->sa_family)
+	{
 	case AF_INET:
-		sin1 = (struct sockaddr_in*)sa1;
-		sin2 = (struct sockaddr_in*)sa2;
+		sin1 = (struct sockaddr_in *)sa1;
+		sin2 = (struct sockaddr_in *)sa2;
 		return ngx_memcmp(&sin1->sin_addr, &sin2->sin_addr, sizeof(sin1->sin_addr));
 #if (NGX_HAVE_INET6)
 	case AF_INET6:
-		s61 = (struct sockaddr_in6*)sa1;
-		s62 = (struct sockaddr_in6*)sa2;
+		s61 = (struct sockaddr_in6 *)sa1;
+		s62 = (struct sockaddr_in6 *)sa2;
 		return ngx_memcmp(&s61->sin6_addr, &s62->sin6_addr, sizeof(s61->sin6_addr));
 #endif
 	default:
@@ -1444,18 +1653,19 @@ static int ngx_http_auth_digest_srcaddr_cmp(struct sockaddr* sa1,
 	return -999;
 }
 
-static void ngx_http_auth_digest_evasion_tracking(ngx_http_request_t* r,
-	ngx_http_auth_digest_loc_conf_t* alcf,
-	ngx_int_t status) {
-	ngx_slab_pool_t* shpool;
-	ngx_uint_t key;
-	ngx_http_auth_digest_ev_node_t testnode, * node;
+static void ngx_http_auth_digest_evasion_tracking(ngx_http_request_t *r, ngx_http_auth_digest_loc_conf_t *alcf, ngx_int_t status)
+{
 
-	if (!ngx_http_auth_digest_srcaddr_key(r->connection->sockaddr, r->connection->socklen, &key)) {
+	ngx_slab_pool_t *shpool;
+	ngx_uint_t key;
+	ngx_http_auth_digest_ev_node_t testnode, *node;
+
+	if (!ngx_http_auth_digest_srcaddr_key(r->connection->sockaddr, r->connection->socklen, &key))
+	{
 		ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "skipping evasive tactics for this source address");
 		return;
 	}
-	shpool = (ngx_slab_pool_t*)ngx_http_auth_digest_shm_zone->shm.addr;
+	shpool = (ngx_slab_pool_t *)ngx_http_auth_digest_shm_zone->shm.addr;
 
 	ngx_shmtx_lock(&shpool->mutex);
 	ngx_memzero(&testnode, sizeof(testnode));
@@ -1464,75 +1674,79 @@ static void ngx_http_auth_digest_evasion_tracking(ngx_http_request_t* r,
 	testnode.src_addrlen = r->connection->socklen;
 	node = ngx_http_auth_digest_ev_rbtree_find(&testnode, ngx_http_auth_digest_ev_rbtree->root, ngx_http_auth_digest_ev_rbtree->sentinel);
 
-	if (node == NULL) {
+	if (node == NULL)
+	{
 		// Don't bother creating a node if this was a successful auth
-		if (status == NGX_HTTP_AUTH_DIGEST_STATUS_SUCCESS) {
-			ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "sucessful auth, not tracking");
+		if (status == NGX_HTTP_AUTH_DIGEST_STATUS_SUCCESS)
+		{
+			ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "ngx_http_auth_digest_evasion_tracking::sucessful auth, not tracking");
 			ngx_shmtx_unlock(&shpool->mutex);
 			return;
 		}
-		ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "adding tracking node");
-		node =
-			ngx_slab_alloc_locked(shpool, sizeof(ngx_http_auth_digest_ev_node_t));
 
-		if (node == NULL) {
+		ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "adding tracking node");
+		node = ngx_slab_alloc_locked(shpool, sizeof(ngx_http_auth_digest_ev_node_t));
+
+		if (node == NULL)
+		{
 			ngx_shmtx_unlock(&shpool->mutex);
 			ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-				"auth_digest ran out of shm space. Increase the "
-				"auth_digest_shm_size limit.");
+						  "auth_digest ran out of shm space. Increase the "
+						  "auth_digest_shm_size limit.");
 			return;
 		}
-		ngx_memcpy(&node->src_addr, r->connection->sockaddr,
-			r->connection->socklen);
+		ngx_memcpy(&node->src_addr, r->connection->sockaddr, r->connection->socklen);
 		node->src_addrlen = r->connection->socklen;
-		((ngx_rbtree_node_t*)node)->key = key;
+		((ngx_rbtree_node_t *)node)->key = key;
 		ngx_rbtree_insert(ngx_http_auth_digest_ev_rbtree, &node->node);
 	}
-	if (status == NGX_HTTP_AUTH_DIGEST_STATUS_SUCCESS) {
-		ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
-			"successful auth, clearing evasion counters");
+	if (status == NGX_HTTP_AUTH_DIGEST_STATUS_SUCCESS)
+	{
+		ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "successful auth, clearing evasion counters");
 		node->failcount = 0;
 		node->drop_time = ngx_time();
 	}
-	else {
+	else
+	{
 		// Reset the failure count to 1 if we're outside the evasion window
-		if (ngx_time() > node->drop_time) {
+		if (ngx_time() > node->drop_time)
+		{
 			node->failcount = 1;
 		}
-		else {
+		else
+		{
 			node->failcount += 1;
 		}
 		node->drop_time = ngx_time() + alcf->evasion_time;
-		ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
-			"failed auth, updating failcount=%d, drop_time=%d",
-			node->failcount, node->drop_time);
+		ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "failed auth, updating failcount=%d, drop_time=%d", node->failcount, node->drop_time);
 	}
 	ngx_shmtx_unlock(&shpool->mutex);
 }
 
-static int ngx_http_auth_digest_evading(ngx_http_request_t* r,
-	ngx_http_auth_digest_loc_conf_t* alcf) {
-	ngx_slab_pool_t* shpool;
+static int ngx_http_auth_digest_evading(ngx_http_request_t *r, ngx_http_auth_digest_loc_conf_t *alcf)
+{
+	ngx_slab_pool_t *shpool;
 	ngx_uint_t key;
-	ngx_http_auth_digest_ev_node_t testnode, * node;
+	ngx_http_auth_digest_ev_node_t testnode, *node;
 	int evading = 0;
 
-	if (!ngx_http_auth_digest_srcaddr_key(r->connection->sockaddr, r->connection->socklen, &key)) {
+	if (!ngx_http_auth_digest_srcaddr_key(r->connection->sockaddr, r->connection->socklen, &key))
+	{
 		return 0;
 	}
 
 	ngx_memzero(&testnode, sizeof(testnode));
 	testnode.node.key = key;
-	ngx_memcpy(&testnode.src_addr, r->connection->sockaddr,
-		r->connection->socklen);
+	ngx_memcpy(&testnode.src_addr, r->connection->sockaddr, r->connection->socklen);
 	testnode.src_addrlen = r->connection->socklen;
 
-	shpool = (ngx_slab_pool_t*)ngx_http_auth_digest_shm_zone->shm.addr;
+	shpool = (ngx_slab_pool_t *)ngx_http_auth_digest_shm_zone->shm.addr;
 
 	ngx_shmtx_lock(&shpool->mutex);
 	node = ngx_http_auth_digest_ev_rbtree_find(&testnode, ngx_http_auth_digest_ev_rbtree->root, ngx_http_auth_digest_ev_rbtree->sentinel);
 
-	if (node != NULL && node->failcount >= alcf->maxtries && ngx_time() < node->drop_time) {
+	if (node != NULL && node->failcount >= alcf->maxtries && ngx_time() < node->drop_time)
+	{
 		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "ignoring authentication request - in evasion period");
 		evading = 1;
 	}
@@ -1540,11 +1754,12 @@ static int ngx_http_auth_digest_evading(ngx_http_request_t* r,
 	return evading;
 }
 
-// pulled in from nginx_auth_o_module
-int ngx_http_auth_digest_is_loopback(ngx_str_t* server) {
-	char* localhost = "localhost";
+static int ngx_http_auth_digest_is_loopback(ngx_str_t *server)
+{
+
+	char *localhost = "localhost";
 	int localhostLen = strlen(localhost);
-	char* loopback = "127.0.0.1";
+	char *loopback = "127.0.0.1";
 	int loopbackLen = strlen(loopback);
 
 	int pos = 0, portCharPos = 0;
@@ -1554,22 +1769,28 @@ int ngx_http_auth_digest_is_loopback(ngx_str_t* server) {
 	if (server->len <= 0 || server->data == NULL)
 		return -1;
 
-	if (((int)strlen((const char*)server->data) >= localhostLen) && (strncmp((const char*)server->data, localhost, localhostLen) == 0)) {
+	if (((int)strlen((const char *)server->data) >= localhostLen) && (strncmp((const char *)server->data, localhost, localhostLen) == 0))
+	{
 		pos = localhostLen;
 	}
-	else if (((int)strlen((const char*)server->data) >= loopbackLen) && (strncmp((const char*)server->data, loopback, loopbackLen) == 0)) {
+	else if (((int)strlen((const char *)server->data) >= loopbackLen) && (strncmp((const char *)server->data, loopback, loopbackLen) == 0))
+	{
 		pos = loopbackLen;
 	}
-	else {
+	else
+	{
 		return -1;
 	}
 
-	if (server->data[pos] == '\0') {
+	if (server->data[pos] == '\0')
+	{
 		return 0;
 	}
-	else if (server->data[pos] == ':') {
+	else if (server->data[pos] == ':')
+	{
 		++pos;
-		while (portCharPos <= 3 && server->data[pos] >= '0' && server->data[pos] <= '9') {
+		while (portCharPos <= 3 && server->data[pos] >= '0' && server->data[pos] <= '9')
+		{
 			portChar[portCharPos] = server->data[pos];
 			++portCharPos;
 			++pos;
@@ -1585,3 +1806,300 @@ int ngx_http_auth_digest_is_loopback(ngx_str_t* server) {
 
 	return -1;
 }
+
+static ngx_int_t ngx_http_auth_os_handler(ngx_http_request_t *r)
+{
+	if (ngx_http_auth_os_basic_user(r) != NGX_OK)
+	{
+		return NGX_DECLINED;
+	}
+
+	// Authenticate against the users on the current system (0 == true, else false)
+	if (Authenticate((const char *)r->headers_in.user.data, (const char *)r->headers_in.passwd.data) == 0)
+	{
+		ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "ngx_http_auth_digest_handler->ngx_http_auth_os_handler->Was ABLE to validate with basic");
+		return NGX_OK;
+	}
+	else
+	{
+		ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "ngx_http_auth_digest_handler->ngx_http_auth_os_handler->Was UNABLE to validate with basic");
+		return NGX_HTTP_UNAUTHORIZED;
+	}
+}
+
+static ngx_int_t ngx_http_auth_os_basic_user(ngx_http_request_t *r)
+{
+	ngx_str_t auth, encoded;
+	ngx_uint_t len;
+
+	if (r->headers_in.user.len == 0 && r->headers_in.user.data != NULL)
+	{
+		return NGX_DECLINED;
+	}
+
+	if (r->headers_in.authorization == NULL)
+	{
+		r->headers_in.user.data = (u_char *)"";
+		return NGX_DECLINED;
+	}
+
+	encoded = r->headers_in.authorization->value;
+
+	if (encoded.len < sizeof("Basic ") - 1 || ngx_strncasecmp(encoded.data, (u_char *)"Basic ", sizeof("Basic ") - 1) != 0)
+	{
+		r->headers_in.user.data = (u_char *)"";
+		return NGX_DECLINED;
+	}
+
+	encoded.len -= sizeof("Basic ") - 1;
+	encoded.data += sizeof("Basic ") - 1;
+
+	while (encoded.len && encoded.data[0] == ' ')
+	{
+		encoded.len--;
+		encoded.data++;
+	}
+
+	if (encoded.len == 0)
+	{
+		r->headers_in.user.data = (u_char *)"";
+		return NGX_DECLINED;
+	}
+
+	auth.len = ngx_base64_decoded_length(encoded.len);
+	auth.data = ngx_pnalloc(r->pool, auth.len + 1);
+	if (auth.data == NULL)
+	{
+		return NGX_ERROR;
+	}
+
+	if (ngx_decode_base64(&auth, &encoded) != NGX_OK)
+	{
+		r->headers_in.user.data = (u_char *)"";
+		return NGX_DECLINED;
+	}
+
+	auth.data[auth.len] = '\0';
+
+	for (len = 0; len < auth.len; len++)
+	{
+		if (auth.data[len] == ':')
+		{
+			break;
+		}
+	}
+
+	if (len == 0 || len == auth.len)
+	{
+		r->headers_in.user.data = (u_char *)"";
+		return NGX_DECLINED;
+	}
+
+	r->headers_in.user.len = len;
+	r->headers_in.user.data = auth.data;
+	r->headers_in.user.data[len] = '\0';
+	r->headers_in.passwd.len = auth.len - len - 1;
+	r->headers_in.passwd.data = &auth.data[len + 1];
+
+	return NGX_OK;
+}
+
+static ngx_int_t ngx_http_auth_os_set_realm(ngx_http_request_t *r, ngx_str_t *realm)
+{
+
+	r->headers_out.www_authenticate = ngx_list_push(&r->headers_out.headers);
+	if (r->headers_out.www_authenticate == NULL)
+	{
+		return NGX_HTTP_INTERNAL_SERVER_ERROR;
+	}
+
+	size_t len = sizeof("Basic realm=\"\"") - 1 + realm->len;
+
+	u_char *basic = ngx_pnalloc(r->pool, len);
+	if (basic == NULL)
+	{
+		return NGX_HTTP_INTERNAL_SERVER_ERROR;
+	}
+
+	u_char *p = ngx_cpymem(basic, "Basic realm=\"", sizeof("Basic realm=\"") - 1);
+	p = ngx_cpymem(p, realm->data, realm->len);
+	*p = '"';
+
+	r->headers_out.www_authenticate->hash = 1;
+	ngx_str_set(&r->headers_out.www_authenticate->key, "WWW-Authenticate");
+	r->headers_out.www_authenticate->value.data = basic;
+	r->headers_out.www_authenticate->value.len = len;
+
+	return NGX_HTTP_UNAUTHORIZED;
+}
+
+#if !_WIN32
+
+#include <unistd.h>
+#include <crypt.h>
+#include <pwd.h>
+#include <shadow.h>
+#include <string.h>
+#include <stdlib.h>
+
+/* Package libpam0g-dev includes this header. */
+#include <security/pam_appl.h>
+
+int pam_conversation_callback(int count, const struct pam_message **msg, struct pam_response **resp, void *data);
+void *SecureMemset(void *buf, int val, size_t len);
+
+int Authenticate(const char *userName, const char *userPassword)
+{
+	int status;
+	pam_handle_t *pamh = NULL;
+	int result = -1;
+	struct pam_conv callback = {
+		pam_conversation_callback,
+		(void *)userPassword};
+
+	if (pam_start("check_user", userName, &callback, &pamh) == PAM_SUCCESS)
+	{
+		status = pam_authenticate(pamh, PAM_SILENT);
+		if (status == PAM_SUCCESS)
+		{
+			// Check if the password or account has expired, and verify
+			//  access restrictions are met.
+			status = pam_acct_mgmt(pamh, 0);
+			if (status == PAM_SUCCESS)
+			{
+				result = 0;
+			}
+		}
+
+		pam_end(pamh, status);
+	}
+
+	return result;
+}
+
+/*!
+*  @brief callback routine used by PAM to get the password.
+*
+*  @param[in] count - the number of messages to process
+*  @param[in] msg - a bunch of messages to process
+*  @param[out] resp - the responses to each message
+*  @param[in] data - an application specific parameter passed
+*      to this routine by the PAM library (we store the password
+*      into this parameter during the pam_start command).
+*
+*  @return a value of PAM_SUCCESS on success otherwise an error code.
+*/
+int pam_conversation_callback(int count, const struct pam_message **msg,
+							  struct pam_response **resp, void *data)
+{
+	struct pam_response *response;
+	int i = 0, j = 0;
+
+	if (count <= 0 || count > PAM_MAX_NUM_MSG)
+	{
+		return PAM_CONV_ERR;
+	}
+
+	// This will be free'd by the application if we encounter an error
+	//  before we leave this function or on success it is free'd by the
+	//  pam module (caller) of this function.
+	response = (struct pam_response *)(calloc(count, sizeof(*response)));
+	if (response == NULL)
+	{
+		return PAM_BUF_ERR;
+	}
+
+	// Now process each request and build the reply.
+	for (i = 0; i < count; ++i)
+	{
+		if (msg[i]->msg_style == PAM_PROMPT_ECHO_OFF)
+		{
+			response[i].resp = strdup((char *)data);
+			if (response[i].resp == NULL)
+				goto EXIT_ERROR;
+		}
+	}
+
+	*resp = response;
+	return PAM_SUCCESS;
+
+EXIT_ERROR:
+	// An error occurred, release any resources and return an error
+	for (j = 0; j < count; ++j)
+	{
+		if (response[j].resp != NULL)
+		{
+			SecureMemset(response[j].resp, 0, strlen(response[j].resp));
+			free(response[j].resp);
+		}
+	}
+
+	free(response);
+	*resp = NULL;
+	return PAM_CONV_ERR;
+}
+
+/*!
+*  @brief this routine fills a buffer in an optimization safe manner.
+*
+*  This code provides a way to fill a buffer with a value in a platform
+*  independent manner while attempting to block the compiler from accidentally
+*  optimizing out required code.
+*
+*  @param[in] buf - a pointer to the buffer being modified.
+*  @param[in] val - the value to store to the buffer.
+*  @param[in] len - the length of the buffer in a count of bytes.
+*
+*  @return a pointer to the buffer.
+*/
+void *SecureMemset(void *buf, int val, size_t len)
+{
+	// This technique is based on the work of Michael Howard.  See the
+	//  following area for more detailed information:
+	//  http://www.linux.org/docs/ldp/howto/Secure-Programs-HOWTO/protect-secrets.html
+	volatile char *p = (char *)buf;
+	while (len--)
+	{
+		*p++ = val;
+	}
+	return buf;
+}
+#else
+
+#define MAX_LENGTH ((UNLEN > PWLEN ? UNLEN : PWLEN) + 1)
+
+wchar_t *FromUtf8(const char *string);
+
+int Authenticate(const char *username, const char *password)
+{
+	int iSuccess = -1;
+	HANDLE token;
+
+	LPWSTR wuser = FromUtf8(username ? username : "");
+	LPWSTR wpwd = FromUtf8(password ? password : "");
+
+	// http://msdn.microsoft.com/en-us/library/aa378184(VS.85).aspx
+	if (LogonUserW(wuser, L".", wpwd, LOGON32_LOGON_NETWORK, LOGON32_PROVIDER_DEFAULT, &token) != 0)
+	{
+		CloseHandle(token);
+		iSuccess = 0;
+	}
+
+	if (wuser != NULL)
+		free(wuser);
+	if (wpwd != NULL)
+		free(wpwd);
+
+	return iSuccess;
+}
+
+wchar_t *FromUtf8(const char *string)
+{
+	int iSize = MultiByteToWideChar(CP_UTF8, 0, string, -1, NULL, 0);
+
+	LPWSTR wstring = (LPWSTR)malloc(iSize * sizeof(wchar_t));
+
+	MultiByteToWideChar(CP_UTF8, 0, string, -1, wstring, iSize);
+	return wstring;
+}
+#endif
