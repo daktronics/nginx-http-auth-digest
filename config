@@ -1,5 +1,6 @@
 # -*- mode:sh; -*-
 ngx_addon_name=ngx_http_auth_digest_module
+CORE_LIBS="$CORE_LIBS -lpam"
 
 if test -n "$ngx_module_link"; then
     ngx_module_type=HTTP
