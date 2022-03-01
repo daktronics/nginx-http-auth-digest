@@ -46,8 +46,8 @@ static char* ngx_http_auth_digest_merge_loc_conf(ngx_conf_t* cf, void* parent, v
 	ngx_conf_merge_sec_value(conf->evasion_time, prev->evasion_time, 300);
 	ngx_conf_merge_value(conf->maxtries, prev->maxtries, 5);
 	ngx_conf_merge_str_value(conf->allow_localhost, prev->allow_localhost, "off");
-	ngx_conf_merge_str_value(conf->use_basic, prev->use_basic, "off");
 	ngx_conf_merge_str_value(conf->user_agents_allow_basic, prev->user_agents_allow_basic, "");
+	ngx_conf_merge_str_value(conf->use_basic, prev->use_basic, "off");
 
 	if (conf->user_file.value.len == 0) {
 		conf->user_file = prev->user_file;
@@ -179,7 +179,6 @@ static ngx_int_t ngx_http_auth_digest_handler(ngx_http_request_t* r) {
 		return ngx_http_auth_os_handler(r);
 	}
 
-	ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "alcf->use_basic.data-> is %s", alcf->use_basic.data);
 	const int useBasic = ngx_strcmp(alcf->use_basic.data, "on") == 0;
 
 	if (useBasic) {
