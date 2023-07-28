@@ -133,4 +133,29 @@ These are the directives specific to the Digest Authentication
 
 *Here is where our custom directives begin:
 
+### auth_digest_allow_localhost
+|   |   |
+|-------|------|
+| Syntax: | ``auth_digest_allow_localhost`` [``on`` \| ``off``] |
+| Default: | ``off`` |
+| Context: | server, location |
+| Description: | When enabled, this directive will disable authentication for ``localhost`` and ``127.0.0.1`` HTTP requests. This is to give us greater control of our authentication, especially where our internal networks are concerned. It is disabled by default for better security.
+|
 
+### auth_digest_use_basic
+|   |   |
+|-------|------|
+| Syntax: | ``auth_digest_use_basic`` [``on`` \| ``off``] |
+| Default: | ``off`` |
+| Context: | server, location |
+| Description: | This directive enables the use of Basic Authentication to validate against a specified user in the operating system registry. 
+|
+
+### user_agents_allow_basic
+|   |   |
+|-------|------|
+| Syntax: | ``user_agents_allow_basic`` *comma-separated list of user agents* |
+| Default: | *unset* |
+| Context: | server, location |
+| Description: | This directive specifies certain user-agents as users of the basic/OS authentication scheme described above. Any user-agent in the list will be prompted to log in via Basic Authentication versus Digest Authentication.
+|
