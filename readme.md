@@ -57,6 +57,26 @@ disable authentication for specific sub-branches off a uri, set ``auth_digest`` 
 
 ## Directives
 These are the directives specific to the Digest Authentication
+
+
+### auth_digest
+|   |   |
+|-------|------|
+| Syntax: | ``auth_digest`` [*realm-name* \| ``off``] |
+| Default: | ``off`` |
+| Context: | server, location |
+| Description: | Enable or disable digest authentication for a server or location block. The realm name should correspond to a realm used in the user file. Any user within that realm will be able to access files after authenticating. To selectively disable authentication within a protected uri hierarchy, set ``auth_digest`` to “``off``” within a more-specific location block (see example).
+|  
+  
+### auth_digest_user_file
+|   |   |
+|-------|------|
+| Syntax: | ``auth_digest_user_file`` */path/to/passwd/file* |
+| Default: | *unset* |
+| Context: | server, location |
+| Description: | The password file should be of the form created by the apache ``htdigest`` command (or the included `htdigest.py`_ script). Each line of the file is a colon-separated list composed of a username, realm, and md5 hash combining name, realm, and password. For example: ``joi:enfield:ef25e85b34208c246cfd09ab76b01db7`` This file needs to be readable by your nginx user!
+|
+
 ### auth_digest_timeout
 |   |   |
 |-------|------|
@@ -64,7 +84,8 @@ These are the directives specific to the Digest Authentication
 | Default: | ``60s`` |
 | Context: | server, location |
 | Description: | When a client first requests a protected page, the server returns a 401 status code along with a challenge in the ``www-authenticate`` header. At this point most browsers will present a dialog box to the user prompting them to log in. This directive defines how long challenges will remain valid. If the user waits longer than this time before submitting their name and password, the challenge will be considered ‘stale’ and they will be prompted to log in again.
-  
+|
+
 ### auth_digest_expires
 |   |   |
 |-------|------|
@@ -72,6 +93,7 @@ These are the directives specific to the Digest Authentication
 | Default: | ``10s`` |
 | Context: | server, location |
 | Description: | Once a digest challenge has been successfully answered by the client, subsequent requests will attempt to re-use the ‘nonce’ value from the original challenge. To complicate [Man-In-The-Middle](http://en.wikipedia.org/wiki/Man-in-the-middle_attack) attacks, it's best to limit the number of times a cached nonce will be accepted. This directive sets the duration for this re-use period after the first successful authentication.
+|
 
 ### auth_digest_replays
 |   |   |
@@ -80,6 +102,7 @@ These are the directives specific to the Digest Authentication
 | Default: | ``20`` |
 | Context: | server, location |
 | Description: | Nonce re-use should also be limited to a fixed number of requests. Note that increasing this value will cause a proportional increase in memory usage and the shm_size may have to be adjusted to keep up with heavy traffic within the digest-protected location blocks.
+|
 
 ### auth_digest_evasion_time
 |   |   |
@@ -88,6 +111,7 @@ These are the directives specific to the Digest Authentication
 | Default: | ``300s`` |
 | Context: | server, location |
 | Description: | The amount of time for which the server will ignore authentication requests from a client address once the number of failed authentications from that client reaches ``auth_digest_maxtries``.
+|
 
 ### auth_digest_maxtries
 |   |   |
@@ -96,6 +120,7 @@ These are the directives specific to the Digest Authentication
 | Default: | ``5`` |
 | Context: | server, location |
 | Description: | The number of failed authentication attempts from a client address before the module enters evasive tactics. For evasion purposes, only network clients are tracked, and only by address (not including port number).  A successful authentication clears the counters.
+|
 
 ### auth_digest_shm_size
 |   |   |
@@ -104,6 +129,7 @@ These are the directives specific to the Digest Authentication
 | Default: | ``4096k`` |
 | Context: | server |
 | Description: | The module maintains a fixed-size cache of active digest sessions to save state between authenticated requests. Once this cache is full, no further authentication will be possible until active sessions expire. As a result, choosing the proper size is a little tricky since it depends upon the values set in the expiration-related directives. Each stored challenge takes up ``48 + ceil(replays/8)`` bytes and will live for up to ``auth_digest_timeout + auth_digest_expires`` seconds. When using the default module settings this translates into allowing around 82k non-replay requests every 70 seconds.
+|
 
 *Here is where our custom directives begin:
 
