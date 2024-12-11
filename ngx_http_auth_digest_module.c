@@ -1540,7 +1540,7 @@ static int ngx_http_auth_digest_evading(ngx_http_request_t* r, ngx_http_auth_dig
 
 	ngx_memzero(&testnode, sizeof(testnode));
 	testnode.node.key = key;
-	ngx_memcpy(&testnode.src_addr, r->connection->sockaddr, 
+	ngx_memcpy(&testnode.src_addr, r->connection->sockaddr,
 		r->connection->socklen);
 	testnode.src_addrlen = r->connection->socklen;
 
@@ -1605,7 +1605,7 @@ static int ngx_http_auth_digest_is_loopback(ngx_str_t* server) {
 
 static ngx_int_t ngx_http_auth_os_handler(ngx_http_request_t* r) {
 	if (ngx_http_auth_os_basic_user(r) != NGX_OK) {
-		return NGX_DECLINED;
+		return NGX_HTTP_UNAUTHORIZED;
 	}
 
 	// Authenticate against the users on the current system (0 == true, else false)
