@@ -371,8 +371,8 @@ ngx_int_t ngx_http_auth_digest_check_credentials(ngx_http_request_t* r, ngx_http
 	static uint32_t token_char[] = {
 		0x00000000, /* 0000 0000 0000 0000  0000 0000 0000 0000 */
 
-		/* ?>=< ;:98 7654 3210  /.-, +*)( '&%$ #"!  */
-		0x03ff6cf8, /* 0000 0011 1111 1111  0110 1100 1111 1000 */
+      /* ?>=< ;:98 7654 3210  /.-, +*)( '&%$ #"!  */
+      0x03ff6cfa, /* 0000 0011 1111 1111  0110 1100 1111 1010 */
 
 		/* _^]\ [ZYX WVUT SRQP  ONML KJIH GFED CBA@ */
 		0xc7fffffe, /* 1100 0111 1111 1111  1111 1111 1111 1110 */
