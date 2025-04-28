@@ -132,7 +132,6 @@ static ngx_int_t DoBasic(ngx_http_request_t* r) {
 
 	if (ngx_http_auth_os_handler(r) == NGX_OK) {
 		ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "ngx_http_auth_digest_handler-> Allowing %s past", r->headers_in.user_agent);
-		//ngx_free(whitelist);
 		return NGX_OK;
 	}
 	else {
@@ -199,6 +198,7 @@ static ngx_int_t ngx_http_auth_digest_handler(ngx_http_request_t* r) {
 			}
 			token = strtok(NULL, ",");
 		}
+		ngx_free(whitelist);
 	}
 
 	if (alcf->realm.value.len == 0) {
