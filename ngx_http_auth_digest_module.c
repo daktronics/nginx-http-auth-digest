@@ -193,6 +193,7 @@ static ngx_int_t ngx_http_auth_digest_handler(ngx_http_request_t* r) {
 		while (token != NULL) {
 			if (ngx_strstr(r->headers_in.user_agent->value.data, token)) {
 				ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "ngx_http_auth_digest_handler-> is %s", r->headers_in.user_agent);
+				ngx_free(whitelist);
 
 				return DoBasic(r);
 			}
