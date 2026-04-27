@@ -148,7 +148,7 @@ These are the directives specific to the Digest Authentication
 | Syntax: | ``auth_digest_use_basic`` [``on`` \| ``off``] |
 | Default: | ``off`` |
 | Context: | server, location |
-| Description: | This directive enables the use of Basic Authentication to validate against a specified user in the operating system registry. 
+| Description: | This directive enables the use of Basic Authentication to validate against a specified user in the operating system registry. See additional notes under [Additional Behaviors](#additional-behaviors)
 |
 
 ### user_agents_allow_basic
@@ -159,3 +159,7 @@ These are the directives specific to the Digest Authentication
 | Context: | server, location |
 | Description: | This directive specifies certain user-agents as users of the basic/OS authentication scheme described above. Any user-agent in the list will be prompted to log in via Basic Authentication versus Digest Authentication.
 |
+
+## Additional Behaviors
+- Basic Authentication Bypass Validation
+  - There is a known behavior in the codebase, as of 4/27/2026, where the module will validate any Basic Authentication headers in any incoming request, regardless of whether the `auth_digest_use_basic` directive is set to `on` or `off` (or if it is missing entirely). This behavior was originally a bug, but has proven useful in some cases where authentication over GET requests is disabled but validating credentials over GET requests is still desirable. Currently, as of 4/27/2026, Display Studio is the only application taking advantage of this behavior, so keep that in mind when looking at future migrations away from this module: that codebase will need to change how it validates its credentials.
