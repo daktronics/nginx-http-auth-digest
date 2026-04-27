@@ -173,6 +173,14 @@ static ngx_int_t ngx_http_auth_digest_handler(ngx_http_request_t* r) {
 		}
 	}
 
+	//
+	// This behavior means that sending a request with a basic auth header will
+	// automatically be validated by this module regardless of whether it is enabled or not.
+	// This is desirable in some cases (pinging an endpoint with GET auth disabled to validate 
+	// a set of credentials). Ultimately, however, other modules don't behave this way, so keep
+    // that risk in mind during any eventual migrations. As of 4/27/2026, Display Studio is the 
+    // Only real Daktronics app that leverages this.
+	//
 	if (ngx_http_auth_digest_is_sending_basic(r)) {
 		ngx_log_error(NGX_LOG_INFO, r->connection->log, 0, "ngx_http_auth_digest_handler-> about to validate preauth basic header :(");
 		return ngx_http_auth_os_handler(r);
